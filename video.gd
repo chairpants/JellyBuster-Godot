@@ -56,7 +56,7 @@ func _exit_tree() -> void:
 
 
 func play_episode(ep: Array, at := 0.0) -> void:  # ep: ["jellyfin", title, item id, seconds long] (jellyfin.gd makes them)
-	play_url($"../Jellyfin".stream_url(ep[2]), at)
+	play_url(Library.stream_url(ep[2]), at)
 	duration = ep[3] if ep.size() > 3 else 0.0
 
 

@@ -4,11 +4,12 @@ extends Node
 ##
 ## Click a tape: it comes off the shelf, held up to look at. Click again: it's in your hand. Right-click while you're
 ## still looking: back it goes. Click its empty slot: back it goes. Click with one in hand: held up again.
-## E at the TV: the tape in hand goes in and plays; E again: out it comes. E on the couch: sit (E again: up).
+## E at the theater's screen: the tape in hand goes in and plays there (and on the CRTs hung over the aisles); E again:
+## out it comes. (The lounge's TV and couch are the level's, and in data/interact.json, but not wired up for now.)
 ## Up to 9 carried; 1-9 or the wheel picks which is in hand. [ ] wind 30 s, , . the episode before / after.
 ##
 ## The shelves' tapes are drawn a chunk of CHUNK at a time (a MultiMesh each), their covers layers of a texture array,
-## filled in as Jellyfin's covers arrive (cached in user://covers, see jellyfin.gd). Till then: the section's colour.
+## filled in as Jellyfin's covers arrive (cached in user://covers, see Library.gd). Till then: the section's colour.
 
 const REACH := 3.4
 const INV_MAX := 9
@@ -41,14 +42,12 @@ var LOOK := Transform3D(Basis.IDENTITY, Vector3(0, 0, -0.34))  # held up, cover 
 var size: Vector3 = preload("res://store.gd").TAPE
 var tapes: Array = []
 var screens: Array = []
-var seats: Array = []
 var hovered = null  # the tape the crosshair's on
 var held = null
 var inspecting := false  # held up in view (true) or carried (false)
 var peek = null  # the tape you've only just picked up to look at: right-click still puts it back
 var aim_slot := false
 var aim_tv = null  # the screen the crosshair's on
-var aim_seat = null
 var playing = null  # { tape, idx }
 var inv: Array = []  # the tapes you're carrying, the one in hand among them
 var inv_sel := -1  # which of them is in hand (-1: empty-handed)
@@ -59,7 +58,6 @@ var _hand := Node3D.new()
 var _hand_cover := MeshInstance3D.new()
 var _box := MeshInstance3D.new()
 var _quads: Array[MeshInstance3D] = []
-var _stood_at := {}
 var _next_cover := 0
 var _gen := 0  # which stocking the cover workers are filling (a restock leaves the old ones to give up)
 
@@ -67,7 +65,6 @@ var _gen := 0  # which stocking the cover workers are filling (a restock leaves 
 @onready var cam: Camera3D = $"../Player/Camera"
 @onready var hud: CanvasLayer = $"../HUD"
 @onready var video: Node = $"../Video"
-@onready var jellyfin: Node = $"../Jellyfin"
 
 
 func _ready() -> void:
@@ -78,7 +75,8 @@ func _ready() -> void:
 	var body := MeshInstance3D.new()  # the tape in hand: a black box, its cover on the front
 	body.mesh = BoxMesh.new()
 	body.mesh.size = size
-	body.mesh.material = preload("res://store.gd")._mat(Color(0.04, 0.04, 0.04), 0.7)
+	body.mesh.material = StandardMaterial3D.new()
+	body.mesh.material.albedo_color = Color(0.04, 0.04, 0.04)
 	_hand.add_child(body)
 	_hand_cover.mesh = QuadMesh.new()
 	_hand_cover.mesh.size = Vector2(size.x, size.y)
@@ -90,9 +88,10 @@ func _ready() -> void:
 	video.started.connect(_on_started)
 	video.ended.connect(func() -> void: step_episode(1))
 	video.failed.connect(func(why: String) -> void: hud.toast("⚠ " + why))
+	stock.call_deferred($"../Store")  # (once the store's built its shelves)
 
 
-func stock(store: Node) -> void:  # the store's tapes onto its shelves (store.gd has placed them), and the TV and couch
+func stock(store: Node) -> void:  # the store's tapes onto its shelves (store.gd has placed them), and the pictures onto the screens
 	for c in _chunks:
 		c.mi.queue_free()
 	for q in _quads:
@@ -108,8 +107,7 @@ func stock(store: Node) -> void:  # the store's tapes onto its shelves (store.gd
 		video.stop()
 		playing = null
 	tapes = store.slots
-	screens = store.screens
-	seats = store.seats
+	screens = Level.data().screens.filter(func(sc: Dictionary) -> bool: return sc.kind == "theater")
 	var colours := {}  # a colour per section, till the covers come
 	var mat := ShaderMaterial.new()
 	mat.shader = Shader.new()
@@ -118,7 +116,7 @@ func stock(store: Node) -> void:  # the store's tapes onto its shelves (store.gd
 	for i in tapes.size():
 		var t: Dictionary = tapes[i]
 		t.merge({ "off": false, "ep": 0, "at": 0.0, "i": i })
-		_grid.get_or_add(_cell(t.p), []).append(i)
+		_grid.get_or_add(_cell(t.xf.origin), []).append(i)
 		if i % CHUNK == 0:
 			var n := mini(CHUNK, tapes.size() - i)
 			var mm := MultiMesh.new()
@@ -144,9 +142,9 @@ func stock(store: Node) -> void:  # the store's tapes onto its shelves (store.gd
 			add_child(mi)
 			_chunks.append({ "mm": mm, "tex": tex, "mi": mi })
 		var ch: Dictionary = _chunks[i / CHUNK]
-		ch.mm.set_instance_transform(i % CHUNK, _xform(t))
+		ch.mm.set_instance_transform(i % CHUNK, t.xf)
 		ch.mm.set_instance_custom_data(i % CHUNK, Color(i % CHUNK, 0, 0, 0))
-	for sc: Dictionary in screens:  # the picture, a hair in front of each screen
+	for sc: Dictionary in screens + Level.data().get("minis", []):  # the picture, a hair in front of each screen (the theater's, and the CRTs over the aisles)
 		var q := MeshInstance3D.new()
 		var quad := QuadMesh.new()
 		quad.size = Vector2(sc.w, sc.h)
@@ -154,8 +152,12 @@ func stock(store: Node) -> void:  # the store's tapes onto its shelves (store.gd
 		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		quad.material = m
 		q.mesh = quad
-		q.position = Vector3(sc.x, sc.y, sc.z) + Vector3(sin(sc.ry), 0, cos(sc.ry)) * 0.006
-		q.rotation.y = sc.ry
+		if sc.has("q"):
+			q.basis = Basis(Quaternion(sc.q[0], sc.q[1], sc.q[2], sc.q[3]))
+			q.position = Vector3(sc.p[0], sc.p[1], sc.p[2]) + q.basis.z * 0.006
+		else:
+			q.position = Vector3(sc.x, sc.y, sc.z) + Vector3(sin(sc.ry), 0, cos(sc.ry)) * 0.006
+			q.rotation.y = sc.ry
 		add_child(q)
 		_quads.append(q)
 	_screens_show(false)
@@ -171,7 +173,7 @@ func _cover_worker(gen: int) -> void:  # covers onto the shelf, the next one not
 	while gen == _gen and _next_cover < tapes.size():
 		var t: Dictionary = tapes[_next_cover]
 		_next_cover += 1
-		var img: Image = await jellyfin.cover(t.cover)
+		var img: Image = await Library.cover(t.cover)
 		if gen != _gen:
 			return
 		if img != null:
@@ -182,10 +184,6 @@ func _cover_worker(gen: int) -> void:  # covers onto the shelf, the next one not
 		n += 1
 		if n % 16 == 0:
 			await get_tree().process_frame  # (cached ones come back at once: a few a frame, not all of them in one)
-
-
-func _xform(t: Dictionary) -> Transform3D:
-	return Transform3D(Basis(Vector3.UP, t.ry), t.p)
 
 
 # ---- nothing playing: the bouncing logo on the TV (VaultBuster's, from the web game's lounge.js)
@@ -263,10 +261,6 @@ func _cell(p: Vector3) -> Vector3i:
 	return Vector3i((p / CELL).floor())
 
 
-func _local(t: Dictionary, world: Vector3) -> Vector3:  # in the tape's own frame: x across the cover, y up it, z out of it
-	return Basis(Vector3.UP, -t.ry) * (world - t.p)
-
-
 func _wire_box() -> ArrayMesh:  # the highlight: the tape's edges, in yellow
 	var h := size / 2.0
 	var pts := PackedVector3Array()
@@ -294,7 +288,7 @@ func _wire_box() -> ArrayMesh:  # the highlight: the tape's edges, in yellow
 
 func set_on_shelf(t: Dictionary, on: bool) -> void:
 	t.off = not on
-	_chunks[t.i / CHUNK].mm.set_instance_transform(t.i % CHUNK, _xform(t) if on else Transform3D(Basis.from_scale(Vector3.ZERO), t.p))
+	_chunks[t.i / CHUNK].mm.set_instance_transform(t.i % CHUNK, t.xf if on else Transform3D(Basis.from_scale(Vector3.ZERO), t.xf.origin))
 
 
 # ---- in your hand
@@ -351,7 +345,7 @@ func show_tape(t: Dictionary) -> void:  # the tape in your hand, its cover full 
 	held = t
 	inspecting = false
 	var m: StandardMaterial3D = _hand_cover.material_override
-	var path: String = jellyfin.cover_path(t.cover)
+	var path: String = Library.cover_path(t.cover)
 	m.albedo_texture = ImageTexture.create_from_image(Image.load_from_file(path)) if FileAccess.file_exists(path) else null
 	m.albedo_color = Color.WHITE if m.albedo_texture != null else Color(0.3, 0.3, 0.35)
 	_hand.transform = HAND
@@ -391,10 +385,6 @@ func _process(dt: float) -> void:
 			playing.tape.d = video.duration
 
 
-func _physics_process(_dt: float) -> void:
-	hud.tip(_aim())
-
-
 func seek_by(d: float) -> void:  # wind it on, or back, where it sits in the machine
 	if playing == null or video.url.is_empty():
 		return
@@ -412,9 +402,6 @@ func _clock(t: float) -> String:
 
 
 func _unhandled_input(e: InputEvent) -> void:
-	if e is InputEventKey and e.pressed and not e.echo and e.physical_keycode == KEY_E:
-		on_e()
-		return
 	if e is InputEventKey and e.pressed and playing != null:  # the VCR's transport: [ and ] wind it back and on (held: keeps going), , and . the one before and the next on the tape
 		match e.physical_keycode:
 			KEY_BRACKETLEFT: seek_by(-30.0)
@@ -452,44 +439,27 @@ func _unhandled_input(e: InputEvent) -> void:
 			inspecting = true
 
 
-func on_e() -> void:
-	if player.seat != null:  # E always stands you up
-		player.stand(_stood_at.at, _stood_at.yaw)
-	elif aim_tv != null:
-		vcr_use()
-	elif aim_seat != null:
-		_stood_at = { "at": player.global_position, "yaw": player.rotation.y }
-		player.sit(aim_seat)
+# ---- what the crosshair's on (interact.gd asks, after the doors and the rest); returns the tip, "" if it's nothing of ours
 
-
-# ---- what the crosshair's on: returns the tip
-
-func _aim() -> String:
+func clear_aim() -> void:
 	hovered = null
 	aim_slot = false
 	aim_tv = null
-	aim_seat = null
 	_box.visible = false
-	if player.seat != null:
-		return "E — stand up"
-	if player.fly:
-		return ""
-	var from := cam.global_position
-	var dir := -cam.global_basis.z
-	var q := PhysicsRayQueryParameters3D.create(from, from + dir * 6.0)
-	q.exclude = [player.get_rid()]
-	var hit := player.get_world_3d().direct_space_state.intersect_ray(q)
-	var hit_d: float = from.distance_to(hit.position) if hit else INF
+
+
+func aim(from: Vector3, dir: Vector3, hit: Dictionary, hit_d: float) -> String:
+	clear_aim()
 	if held != null and inspecting:
 		return "%s\n%s\nClick — keep it · Right-click — put it back" % [held.t, held.c]
 	if held != null and held.off:  # its own empty slot: within 8 cm of the middle of it, nothing solid in front
-		var at: Vector3 = held.p - from
+		var at: Vector3 = held.xf.origin - from
 		var t := at.dot(dir)
 		aim_slot = t > 0.3 and t < REACH and (at - dir * t).length() < 0.08 and hit_d > t - 0.15
 		if aim_slot:
 			_show_box(held)
 			return "Click — put %s back" % held.t
-	if hit and hit_d < REACH:  # a tape: the one whose cover the crosshair lands on
+	if hit and hit_d < REACH:  # a tape: the cover the crosshair's on, of those near where it lands on the shelf
 		var best := INF
 		var c := _cell(hit.position)
 		for dx in [-1, 0, 1]:
@@ -497,14 +467,22 @@ func _aim() -> String:
 				for dz in [-1, 0, 1]:
 					for i: int in _grid.get(c + Vector3i(dx, dy, dz), []):
 						var t: Dictionary = tapes[i]
-						var l := _local(t, hit.position)
-						if not t.off and absf(l.x) < size.x / 2.0 + 0.012 and absf(l.y) < size.y / 2.0 + 0.01 and absf(l.z) < 0.05 and l.length() < best:
-							best = l.length()
+						if t.off:
+							continue
+						var inv: Transform3D = t.xf.affine_inverse()
+						var o := inv * from
+						var d := inv.basis * dir
+						if d.z >= 0.0:
+							continue  # (from behind)
+						var k := (size.z / 2.0 - o.z) / d.z  # where the ray meets the cover's plane
+						var l := o + d * k
+						if k > 0.0 and k < best and absf(l.x) < size.x / 2.0 and absf(l.y) < size.y / 2.0:
+							best = k
 							hovered = t
 		if hovered != null:
 			_show_box(hovered)
 			return "%s\n%s" % [hovered.t, hovered.c]
-	for sc: Dictionary in screens:  # the TV: you have to actually be looking at it
+	for sc: Dictionary in screens:  # the screen: you have to actually be looking at it
 		var n := Vector3(sin(sc.ry), 0, cos(sc.ry))
 		var facing := dir.dot(n)
 		if facing > -0.01:
@@ -514,32 +492,24 @@ func _aim() -> String:
 		if t > 0.0 and t < sc.reach and t < hit_d + 0.2 and absf(on.dot(Vector3(cos(sc.ry), 0, -sin(sc.ry)))) < sc.w / 2.0 and absf(on.y) < sc.h / 2.0:
 			aim_tv = sc
 			if held != null:
-				return "E — put “%s” in" % held.t
-			return "E — eject the tape" if playing != null else "Take a tape off the shelves to play it here"
-	if hit and hit_d < 3.2:  # a seat: the nearest to where the crosshair lands
-		var best := 0.8
-		for s: Dictionary in seats:
-			var off: float = hit.position.distance_to(Vector3(s.x, s.y + s.hipY, s.z))
-			if off < best:
-				best = off
-				aim_seat = s
-	if aim_seat != null:
-		return "E — sit on the couch"
-	return "Holding %s" % held.t if held != null else ""
+				return "Press E to put “%s” on" % held.t
+			return "Press E to eject the tape" if playing != null else "Take a tape off the shelves to play it here"
+	return ""
 
 
 func _show_box(t: Dictionary) -> void:
-	_box.transform = _xform(t)
+	_box.transform = t.xf
 	_box.visible = true
 
 
 # ---- the VCR
 
-func vcr_use() -> void:  # E on the TV: the tape in hand goes in, and the one that was in comes out into your hand
+func vcr_use() -> void:  # E on the screen: the tape in hand goes in, and the one that was in comes out into your hand
 	if held != null:
 		var tape: Dictionary = held
 		var old = playing.tape if playing != null else null
 		video.audio.position = Vector3(aim_tv.x, aim_tv.y, aim_tv.z)
+		video.audio.unit_size = 8.0  # (the theater's speakers: loud, and carrying)
 		play_episode(tape.ep, tape)  # it plays from wherever it's wound to
 		release()
 		if old != null:

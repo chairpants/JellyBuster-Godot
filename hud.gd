@@ -1,6 +1,7 @@
 extends CanvasLayer
-## What's on the screen: the name and the library's status top left, a crosshair, the line for whatever you're aiming
-## at, what's playing top right, toasts, and a log of them bottom left (J folds it away).
+## What's on the screen: the day and the time top left (the first line of the web game's HUD, and whether the store's
+## open), a crosshair, the line for whatever you're aiming at, toasts, and the day's log bottom left (the web
+## game's logAct: here every toast goes in it; J folds it away).
 
 var _clock := _label(26)
 var _status := _label(14, Color(1, 0.83, 0))
@@ -38,6 +39,7 @@ func _ready() -> void:
 	_fade.visible = false
 	add_child(_fade)
 	move_child(_fade_text, -1)
+	Clock.toast.connect(toast)
 	_bar.add_theme_constant_override("separation", 6)
 	_bar.visible = false
 	add_child(_bar)
@@ -114,7 +116,7 @@ func now_playing(text: String) -> void:
 
 
 func toast(text: String) -> void:  # up top for a moment, and into the log
-	_rows.append("%s  %s" % [Time.get_time_string_from_system().left(5), text.replace("\n", " ")])
+	_rows.append("%s  %s" % [Clock.fmt_clock(Clock.h), text.replace("\n", " ")])
 	if _rows.size() > 60:
 		_rows.pop_front()
 	_log.text = "\n".join(_rows.slice(-7))
@@ -124,8 +126,8 @@ func toast(text: String) -> void:  # up top for a moment, and into the log
 
 func _process(dt: float) -> void:
 	var s := get_viewport().get_visible_rect().size
-	_clock.text = "JELLYVAULT"
-	_status.text = $"../Jellyfin".status
+	_clock.text = "%s %s" % [Clock.weekday(), Clock.fmt_clock(Clock.h)]
+	_status.text = Library.status
 	_clock.position = Vector2(16, 8)
 	_now.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_now.reset_size()

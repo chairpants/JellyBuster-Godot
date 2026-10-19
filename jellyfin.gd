@@ -6,8 +6,9 @@ extends Node
 ##     api_key="..."
 ## At the start it fetches every movie and series (and the series' episodes) in two requests, makes a tape of each
 ## movie and of each season, puts each in the store's section that best fits (data/genres.json), sorts them by section
-## then title, and has the store built round them (store.gd) and stocked (tapes.gd). Covers come as they're needed,
-## cached in user://covers. --demo[=N] makes up a library instead, no server needed.
+## then title. It's the autoload `Library`, and it goes first: the store's laid out to fit (store.gd plan(): how deep it
+## has to be, Level.dz) before the store's scene opens. Covers come as they're needed, cached in user://covers.
+## --demo[=N] makes up a library instead, no server needed.
 
 const CFG := "user://jellyfin.cfg"
 
@@ -15,7 +16,8 @@ var url := ""
 var key := ""
 var status := "Jellyfin: connecting…"
 var demo := false
-var items: Array = []  # a tape each: { id, cover (item ids to try for its picture), t, sort, c (section), e (episodes, as video.gd plays them) }
+var items: Array = []  # a tape each: { id, cover (item ids to try for its picture), t, sort, c (section), kind (movie / series), year, e (episodes, as video.gd plays them) }
+var plan := {}  # where everything goes (store.gd plan())
 
 func _ready() -> void:
 	var sections: Array = JSON.parse_string(FileAccess.get_file_as_string("res://data/genres.json")).sections
@@ -38,7 +40,7 @@ func _ready() -> void:
 		status = "Jellyfin: no server set · fill in %s (or run with --demo)" % ProjectSettings.globalize_path(CFG)
 		_open()
 		return
-	var shows = await _fetch("/Items?Recursive=true&IncludeItemTypes=Movie,Series&Fields=Genres,SortName")
+	var shows = await _fetch("/Items?Recursive=true&IncludeItemTypes=Movie,Series&Fields=Genres,SortName,ProductionYear")
 	var eps = await _fetch("/Items?Recursive=true&IncludeItemTypes=Episode&Fields=SortName")
 	if shows != null and eps != null:
 		items = build(shows.Items, eps.Items, sections)
@@ -46,10 +48,10 @@ func _ready() -> void:
 	_open()
 
 
-func _open() -> void:  # the store, built round the library, and stocked
-	$"../Store".build(items)
-	$"../Tapes".stock($"../Store")
-	$"../HUD".toast(status)
+func _open() -> void:  # the store, laid out round the library, opens
+	plan = preload("res://store.gd").plan(items, JSON.parse_string(FileAccess.get_file_as_string("res://data/genres.json")))
+	get_node("/root/Level").dz = plan.dz  # (by path: tools/jellyfin_check.gd loads this without the autoloads)
+	get_tree().change_scene_to_file.call_deferred("res://main.tscn")
 
 
 func _fetch(path: String):  # the parsed reply, or null (and the status says why)
@@ -77,13 +79,13 @@ static func build(shows: Array, eps: Array, sections: Array) -> Array:  # Jellyf
 		var sort := str(it.get("SortName", it.Name)).to_lower()
 		var c := classify(it.get("Genres", []), "series" if it.Type == "Series" else "movie", sections)
 		if it.Type != "Series":
-			out.append({ "id": it.Id, "cover": [it.Id], "t": it.Name, "sort": sort, "c": c, "e": [_ep(it, it.Name)] })
+			out.append({ "id": it.Id, "cover": [it.Id], "t": it.Name, "sort": sort, "c": c, "kind": "movie", "year": it.get("ProductionYear", 0), "e": [_ep(it, it.Name)] })
 			continue
 		for sid: String in by_series.get(it.Id, []):  # (a series with nothing in it has nothing to play)
 			var first: Dictionary = seasons[sid][0]
 			var n: int = first.get("ParentIndexNumber", 0)
 			var season: String = first.get("SeasonName", "Specials" if n == 0 else "Season %d" % n)
-			out.append({ "id": sid, "cover": [sid, it.Id], "t": "%s: %s" % [it.Name, season], "sort": "%s %04d" % [sort, n if n > 0 else 9999], "c": c,
+			out.append({ "id": sid, "cover": [sid, it.Id], "t": "%s: %s" % [it.Name, season], "sort": "%s %04d" % [sort, n if n > 0 else 9999], "c": c, "kind": "series", "year": first.get("ProductionYear", it.get("ProductionYear", 0)),
 				"e": seasons[sid].map(func(ep: Dictionary) -> Array: return _ep(ep, "%s - S%02dE%02d - %s" % [it.Name, n, ep.get("IndexNumber", 0), ep.Name])) })
 	var order := {}
 	for i in sections.size():
@@ -158,7 +160,7 @@ static func demo_library(n: int) -> Dictionary:  # Jellyfin-shaped: n movies, an
 		for k in rng.randi_range(1, 3):
 			g.append(pool[rng.randi() % pool.size()])
 		var title := "%s %s %s" % ["The" if rng.randf() < 0.3 else "", words[rng.randi() % words.size()], words[rng.randi() % words.size()]]
-		shows.append({ "Id": "d%d" % i, "Type": "Series" if series else "Movie", "Name": title.strip_edges(), "Genres": g, "RunTimeTicks": 54000000000 })
+		shows.append({ "Id": "d%d" % i, "Type": "Series" if series else "Movie", "Name": title.strip_edges(), "Genres": g, "RunTimeTicks": 54000000000, "ProductionYear": rng.randi_range(1965, 2025) })
 		if series:
 			for s in rng.randi_range(1, 5):
 				for e in rng.randi_range(6, 22):

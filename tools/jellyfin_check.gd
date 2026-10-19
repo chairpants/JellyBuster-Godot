@@ -1,5 +1,5 @@
 extends SceneTree
-## The library's tapes and sections, without a server: godot --headless --path . --script tools/jellyfin_check.gd
+## The library's tapes, sections and layout, without a server: godot --headless --path . --script tools/jellyfin_check.gd
 
 func _init() -> void:
 	var J := load("res://jellyfin.gd")
@@ -35,5 +35,23 @@ func _init() -> void:
 	assert(out[3].e.map(func(e: Array) -> String: return e[2]) == ["e1", "e2"])
 	assert(out[3].cover == ["c1", "s1"])
 	assert(out[2].e[0] == ["jellyfin", "The Thing", "m1", 6500.0])
+	var S := load("res://store.gd")  # the layout: new releases on the walls, older movies and TV in the middle, kids in their corner
+	var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/genres.json"))
+	for n in [0, 300, 6000]:
+		var d: Dictionary = J.demo_library(n)
+		var lib: Array = J.build(d.shows, d.eps, sections)
+		var p: Dictionary = S.plan(lib, cfg)
+		assert(p.wall.size() + p.kids.size() + p.classics.size() + p.tv.size() == lib.size())  # everything somewhere
+		assert(p.wall.all(func(t: Dictionary) -> bool: return t.kind == "movie" and t.year >= cfg.new_from))
+		assert(p.tv.all(func(t: Dictionary) -> bool: return t.kind == "series" or t.year < cfg.new_from))
+		assert(p.classics.all(func(t: Dictionary) -> bool: return t.kind == "movie" and t.year < cfg.new_from))
+		var r: Dictionary = S.runs(p.k)
+		for a: String in ["wall", "kids", "classics", "tv"]:  # and room for it all, with the store no deeper than it has to be
+			var bays: int = r[a].reduce(func(acc: int, run: Dictionary) -> int: return acc + run.bays, 0)
+			assert(S.bays_for(p[a], r[a][0].spec) <= bays, "%s: %d tapes, %d bays" % [a, p[a].size(), bays])
+			var laid: Array = S.lay(p[a], r[a])
+			assert(laid.reduce(func(acc: int, b: Array) -> int: return acc + b[1].filter(func(t) -> bool: return t != null).size(), 0) == p[a].size())
+		if n <= 300:
+			assert(p.k == 0)  # (a small library: VaultBuster's own size)
 	print("jellyfin_check: ok")
 	quit()
