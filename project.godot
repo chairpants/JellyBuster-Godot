@@ -11,13 +11,9 @@ config_version=5
 [application]
 
 config/name="JellyVault"
-config/description="VaultBuster's video store to walk round, its shelves stocked from a Jellyfin library."
+config/description="A video store to walk round, built to fit a Jellyfin library: a tape per movie and per season, by section, A to Z."
 run/main_scene="res://main.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
-
-[autoload]
-
-Clock="*res://clock.gd"
 
 [display]
 

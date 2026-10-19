@@ -6,22 +6,27 @@ extends Node
 ##     api_key="..."
 ## At the start it fetches every movie and series (and the series' episodes) in two requests, makes a tape of each
 ## movie and of each season, puts each in the store's section that best fits (data/genres.json), sorts them by section
-## then title, and puts them on the shelves' slots in order (tapes.gd's tapes, sorted by their section): one
-## slot each; the slots left over come off the shelves.
-## ponytail: stocks VaultBuster's own slots, so the covers are still VaultBuster's. The shelf builder replaces this.
+## then title, and has the store built round them (store.gd) and stocked (tapes.gd). Covers come as they're needed,
+## cached in user://covers. --demo[=N] makes up a library instead, no server needed.
 
 const CFG := "user://jellyfin.cfg"
 
 var url := ""
 var key := ""
 var status := "Jellyfin: connecting…"
+var demo := false
 var items: Array = []  # a tape each: { id, cover (item ids to try for its picture), t, sort, c (section), e (episodes, as video.gd plays them) }
 
-@onready var tapes: Node = $"../Tapes"
-@onready var hud: CanvasLayer = $"../HUD"
-
-
 func _ready() -> void:
+	var sections: Array = JSON.parse_string(FileAccess.get_file_as_string("res://data/genres.json")).sections
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--demo"):  # --demo=N: a made-up library of N films, and series besides, no server needed
+			demo = true
+			var d := demo_library(a.get_slice("=", 1).to_int() if "=" in a else 600)
+			items = build(d.shows, d.eps, sections)
+			status = "Demo library: %d tapes" % items.size()
+			_open()
+			return
 	var cfg := ConfigFile.new()
 	cfg.load(CFG)
 	url = str(cfg.get_value("server", "url", "")).trim_suffix("/")
@@ -30,14 +35,21 @@ func _ready() -> void:
 		cfg.set_value("server", "url", url)
 		cfg.set_value("server", "api_key", key)
 		cfg.save(CFG)
-		status = "Jellyfin: no server set · fill in %s" % ProjectSettings.globalize_path(CFG)
+		status = "Jellyfin: no server set · fill in %s (or run with --demo)" % ProjectSettings.globalize_path(CFG)
+		_open()
 		return
 	var shows = await _fetch("/Items?Recursive=true&IncludeItemTypes=Movie,Series&Fields=Genres,SortName")
 	var eps = await _fetch("/Items?Recursive=true&IncludeItemTypes=Episode&Fields=SortName")
-	if shows == null or eps == null:
-		return
-	items = build(shows.Items, eps.Items, JSON.parse_string(FileAccess.get_file_as_string("res://data/genres.json")).sections)
-	stock()
+	if shows != null and eps != null:
+		items = build(shows.Items, eps.Items, sections)
+		status = "Jellyfin: %d tapes" % items.size()
+	_open()
+
+
+func _open() -> void:  # the store, built round the library, and stocked
+	$"../Store".build(items)
+	$"../Tapes".stock($"../Store")
+	$"../HUD".toast(status)
 
 
 func _fetch(path: String):  # the parsed reply, or null (and the status says why)
@@ -105,25 +117,50 @@ static func _ep(it: Dictionary, title: String) -> Array:
 	return ["jellyfin", title, it.Id, it.get("RunTimeTicks", 0) / 10000000.0]
 
 
-func stock() -> void:
-	var slots: Array = tapes.tapes.duplicate()
-	slots.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a.c < b.c)  # (VaultBuster's sections stay together)
-	tapes.batch = true
-	for i in slots.size():
-		var t: Dictionary = slots[i]
-		if i < items.size():
-			t.merge({ "t": items[i].t, "c": items[i].c, "e": items[i].e, "ep": 0, "at": 0.0 }, true)
-		else:
-			tapes.set_on_shelf(t, false)
-	tapes.batch = false
-	tapes.commit()
-	status = "Jellyfin: %d titles%s" % [items.size(), " (%d didn't fit on the shelves)" % (items.size() - slots.size()) if items.size() > slots.size() else ""]
-	hud.toast(status)
-
-
 func stream_url(id: String) -> String:  # the file as it is: ffmpeg does the rest (video.gd)
 	return "%s/Videos/%s/stream?static=true&api_key=%s" % [url, id, key]
 
 
-func cover_url(id: String, height := 400) -> String:  # for the shelf builder
-	return "%s/Items/%s/Images/Primary?maxHeight=%d" % [url, id, height]
+func cover_path(ids: Array) -> String:  # where a tape's cover is kept once it's come
+	return "user://covers/%s.jpg" % ids[0]
+
+
+func cover(ids: Array) -> Image:  # a tape's cover: the first of its ids Jellyfin has a picture for (a season's own, else its series'); null if none
+	var path := cover_path(ids)
+	if FileAccess.file_exists(path):
+		return Image.load_from_file(path)
+	if demo or url.is_empty():
+		return null
+	for id: String in ids:
+		var http := HTTPRequest.new()
+		add_child(http)
+		http.request("%s/Items/%s/Images/Primary?maxHeight=360&format=Jpg&quality=85" % [url, id], ["X-Emby-Token: " + key])
+		var r: Array = await http.request_completed
+		http.queue_free()
+		var img := Image.new()
+		if r[0] == HTTPRequest.RESULT_SUCCESS and r[1] == 200 and img.load_jpg_from_buffer(r[3]) == OK:
+			DirAccess.make_dir_recursive_absolute("user://covers")
+			FileAccess.open(path, FileAccess.WRITE).store_buffer(r[3])
+			return img
+	return null  # ponytail: asked again every start; remember the misses if a big library's start drags
+
+
+static func demo_library(n: int) -> Dictionary:  # Jellyfin-shaped: n movies, and a series for every fifth, each with a few seasons
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	var pool := ["Action", "Adventure", "Comedy", "Drama", "Romance", "Thriller", "Crime", "Mystery", "Horror", "Science Fiction", "Fantasy", "Western", "Family", "Animation", "Anime", "Music", "Documentary", "Christmas", "War", "History", "Reality"]
+	var words := ["Night", "Return", "City", "Last", "Dark", "Summer", "Killer", "Love", "Space", "Ghost", "River", "Heat", "Blue", "Iron", "Road", "Dream", "Wild", "Secret", "Storm", "Star"]
+	var shows := []
+	var eps := []
+	for i in n + n / 5:
+		var series := i >= n
+		var g := []
+		for k in rng.randi_range(1, 3):
+			g.append(pool[rng.randi() % pool.size()])
+		var title := "%s %s %s" % ["The" if rng.randf() < 0.3 else "", words[rng.randi() % words.size()], words[rng.randi() % words.size()]]
+		shows.append({ "Id": "d%d" % i, "Type": "Series" if series else "Movie", "Name": title.strip_edges(), "Genres": g, "RunTimeTicks": 54000000000 })
+		if series:
+			for s in rng.randi_range(1, 5):
+				for e in rng.randi_range(6, 22):
+					eps.append({ "Id": "d%de%d_%d" % [i, s, e], "SeriesId": "d%d" % i, "SeasonId": "d%ds%d" % [i, s + 1], "SeasonName": "Season %d" % (s + 1), "ParentIndexNumber": s + 1, "IndexNumber": e + 1, "Name": "Episode %d" % (e + 1), "RunTimeTicks": 13200000000 })
+	return { "shows": shows, "eps": eps }

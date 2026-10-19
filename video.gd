@@ -45,7 +45,7 @@ var _shown := 0  # frames put up since it started
 
 func _ready() -> void:
 	add_child(audio)
-	audio.position = Vector3(0.0, 0.95, 26.242)  # (the lounge TV's, till a tape goes in somewhere)
+	audio.position = Vector3.ZERO  # (the TV's, once a tape goes in: tapes.gd)
 	audio.unit_size = 3.0
 	audio.max_db = 3.0
 	_has_ffmpeg = OS.execute("ffmpeg", ["-version"], []) == 0
