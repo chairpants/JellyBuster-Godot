@@ -1,0 +1,24 @@
+{
+	"_": "The store's sections, in the order they're laid out. Each takes the Jellyfin genres in `match` (any case). An item goes to the section that best matches its Jellyfin genres: each match scores 1 for its first genre, 1/2 for its second, 1/3 for its third...; a `strong` section adds 1 when it matches at all (Anime beats Comedy wherever it's listed); ties go to the earlier section; `for` limits a section to movies or series; `fallback` takes what nothing else does.",
+	"sections": [
+		{ "name": "Action & Adventure", "for": "movie", "match": ["action", "adventure", "action & adventure", "war", "martial arts", "disaster"] },
+		{ "name": "Comedy", "for": "movie", "match": ["comedy", "parody", "satire", "stand-up"] },
+		{ "name": "Drama", "for": "movie", "match": ["drama", "biography", "sport", "sports"], "fallback": true },
+		{ "name": "Romance", "for": "movie", "match": ["romance", "romantic comedy"] },
+		{ "name": "Thriller & Mystery", "for": "movie", "match": ["thriller", "mystery", "crime", "suspense", "film-noir", "film noir"] },
+		{ "name": "Horror", "for": "movie", "match": ["horror", "slasher", "supernatural"] },
+		{ "name": "Sci-Fi & Fantasy", "for": "movie", "match": ["science fiction", "sci-fi", "sci-fi & fantasy", "fantasy"] },
+		{ "name": "Westerns", "match": ["western"] },
+		{ "name": "Family & Kids", "for": "movie", "match": ["family", "kids", "children"] },
+		{ "name": "Animation", "for": "movie", "strong": true, "match": ["animation"] },
+		{ "name": "Anime", "strong": true, "match": ["anime"] },
+		{ "name": "Music & Musicals", "match": ["music", "musical"] },
+		{ "name": "Holiday", "strong": true, "match": ["holiday", "christmas"] },
+		{ "name": "Documentary", "strong": true, "match": ["documentary"] },
+		{ "name": "TV Comedy", "for": "series", "match": ["comedy", "sitcom", "talk", "talk show"] },
+		{ "name": "TV Drama", "for": "series", "match": ["drama", "crime", "mystery", "thriller", "soap", "war & politics", "action & adventure", "action", "adventure"], "fallback": true },
+		{ "name": "TV Sci-Fi & Fantasy", "for": "series", "match": ["science fiction", "sci-fi", "sci-fi & fantasy", "fantasy", "horror"] },
+		{ "name": "Cartoons", "for": "series", "strong": true, "match": ["animation", "kids", "children", "family"] },
+		{ "name": "Reality & Game Shows", "for": "series", "match": ["reality", "game show", "game-show"] }
+	]
+}
