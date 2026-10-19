@@ -39,6 +39,8 @@ func _unhandled_input(e: InputEvent) -> void:
 
 
 func _start(ask: bool) -> void:  # (on the loading screen) connect, asking for the server first if need be, and open the store
+	if get_tree().current_scene == null:
+		return  # (run as a script, tools/jellyfin_check.gd: no store to open)
 	var why := ""
 	while true:
 		if ask:
