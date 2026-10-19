@@ -277,6 +277,7 @@ func _wedge(spec: Dictionary) -> ArrayMesh:  # an end panel: the gondola's side,
 		for q: Array in [[a, 0.025], [b, 0.025], [b, -0.025], [a, 0.025], [b, -0.025], [a, -0.025]]:
 			st.add_vertex(v.call(q[0], q[1]))
 	st.generate_normals()
+	st.index()  # (merged into the shelving with the boxes, which are indexed: unindexed, its triangles were dropped)
 	_wedges[spec.h] = st.commit()
 	return _wedges[spec.h]
 

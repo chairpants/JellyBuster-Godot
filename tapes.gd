@@ -4,8 +4,8 @@ extends Node
 ##
 ## Click a tape: it comes off the shelf, held up to look at. Click again: it's in your hand. Right-click while you're
 ## still looking: back it goes. Click its empty slot: back it goes. Click with one in hand: held up again.
-## E at the theater's screen: the tape in hand goes in and plays there (and on the CRTs hung over the aisles); E again:
-## out it comes. (The lounge's TV and couch are the level's, and in data/interact.json, but not wired up for now.)
+## E at the theater's screen or the lounge's TV: the tape in hand goes in and plays there (and on the other screens, and
+## the CRTs hung over the aisles); E again: out it comes.
 ## Up to 9 carried; 1-9 or the wheel picks which is in hand. [ ] wind 30 s, , . the episode before / after.
 ##
 ## The shelves' tapes are drawn a chunk of CHUNK at a time (a MultiMesh each), their covers layers of a texture array,
@@ -107,7 +107,7 @@ func stock(store: Node) -> void:  # the store's tapes onto its shelves (store.gd
 		video.stop()
 		playing = null
 	tapes = store.slots
-	screens = Level.data().screens.filter(func(sc: Dictionary) -> bool: return sc.kind == "theater")
+	screens = Level.data().screens.filter(func(sc: Dictionary) -> bool: return sc.kind in ["theater", "tv"])
 	var colours := {}  # a colour per section, till the covers come
 	var mat := ShaderMaterial.new()
 	mat.shader = Shader.new()
@@ -509,7 +509,7 @@ func vcr_use() -> void:  # E on the screen: the tape in hand goes in, and the on
 		var tape: Dictionary = held
 		var old = playing.tape if playing != null else null
 		video.audio.position = Vector3(aim_tv.x, aim_tv.y, aim_tv.z)
-		video.audio.unit_size = 8.0  # (the theater's speakers: loud, and carrying)
+		video.audio.unit_size = 8.0 if aim_tv.kind == "theater" else 3.0  # (the theater's speakers: loud, and carrying)
 		play_episode(tape.ep, tape)  # it plays from wherever it's wound to
 		release()
 		if old != null:

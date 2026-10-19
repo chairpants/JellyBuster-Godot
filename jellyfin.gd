@@ -145,7 +145,7 @@ func _open() -> void:  # the store, laid out round the library, opens
 func _fetch(path: String):  # the parsed reply, or null (and the status says why)
 	var http := HTTPRequest.new()
 	add_child(http)
-	http.request(url + path, ["X-Emby-Token: " + key])
+	http.request(url + path, _auth())
 	var r: Array = await http.request_completed
 	http.queue_free()
 	if r[0] != HTTPRequest.RESULT_SUCCESS or r[1] != 200:
@@ -207,8 +207,12 @@ static func _ep(it: Dictionary, title: String) -> Array:
 	return ["jellyfin", title, it.Id, it.get("RunTimeTicks", 0) / 10000000.0]
 
 
+func _auth() -> PackedStringArray:  # the key, as Jellyfin wants it now (10.11 turned X-Emby-Token and api_key off by default)
+	return ['Authorization: MediaBrowser Client="JellyVault", Token="%s"' % key]
+
+
 func stream_url(id: String) -> String:  # the file as it is: ffmpeg does the rest (video.gd)
-	return "%s/Videos/%s/stream?static=true&api_key=%s" % [url, id, key]
+	return "%s/Videos/%s/stream?static=true&ApiKey=%s" % [url, id, key]
 
 
 func cover_path(ids: Array) -> String:  # where a tape's cover is kept once it's come
@@ -224,7 +228,7 @@ func cover(ids: Array) -> Image:  # a tape's cover: the first of its ids Jellyfi
 	for id: String in ids:
 		var http := HTTPRequest.new()
 		add_child(http)
-		http.request("%s/Items/%s/Images/Primary?maxHeight=360&format=Jpg&quality=85" % [url, id], ["X-Emby-Token: " + key])
+		http.request("%s/Items/%s/Images/Primary?maxHeight=360&format=Jpg&quality=85" % [url, id], _auth())
 		var r: Array = await http.request_completed
 		http.queue_free()
 		var img := Image.new()

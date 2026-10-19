@@ -17,7 +17,8 @@ signal ended
 signal failed(why: String)
 
 const RES := Vector2i(528, 352)  # 3:2, the shape of the web game's screens. Raw frames, so this is the disk-bandwidth knob
-const FPS := 15
+const MAX_FPS := 60.0  # the source's own frame rate, up to this (ffprobe asks the file first); raw frames, so it's disk bandwidth too
+const FALLBACK_FPS := 24.0  # when ffprobe can't say
 const FRAME_BYTES := RES.x * RES.y * 3  # rgb24
 const CHUNK_SEC := 10  # fetch granularity
 const WORKERS := 2  # chunks fetching at once: network-bound, not CPU-bound
@@ -32,7 +33,11 @@ var duration := 0.0  # 0 when Jellyfin doesn't say
 var paused := false
 var tint := Color.BLACK  # the average colour of the frame on screen (black when nothing's playing): what the screens light the room with
 
+var fps := 0.0  # what's playing plays at (the source's own); 0 while ffprobe's still asking
+
 var _has_ffmpeg := false
+var _probe := {}  # { pid, pipe }: ffprobe asking the file its frame rate
+var _fps_of := {}  # url -> its frame rate, once asked (a seek starts over with the same url)
 var _src_pos := 0.0  # where the next chunk to fetch starts
 var _jobs: Array[Dictionary] = []  # { pid, file, at }: fetching now, oldest first
 var _queue: Array[Dictionary] = []  # { file, at }: fetched, waiting their turn
@@ -70,6 +75,13 @@ func play_url(u: String, at := 0.0) -> void:
 	position = _src_pos
 	paused = false
 	_shown = 0
+	fps = _fps_of.get(u, 0.0)
+	if fps == 0.0:
+		var p := OS.execute_with_pipe("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=avg_frame_rate,r_frame_rate", "-of", "csv=p=0", url])
+		if p.is_empty():
+			fps = FALLBACK_FPS
+		else:
+			_probe = p
 
 
 func pause(on := not paused) -> void:
@@ -83,6 +95,9 @@ func seek(to: float) -> void:
 
 
 func stop() -> void:
+	if not _probe.is_empty():
+		OS.kill(_probe.pid)
+		_probe = {}
 	for job in _jobs:  # else they keep fetching chunks of something we've left
 		OS.kill(job.pid)
 	_jobs.clear()
@@ -111,6 +126,12 @@ func _ogg(slot: int) -> String:
 func _process(dt: float) -> void:
 	if url.is_empty():
 		return
+	if fps == 0.0:  # the frame rate first: every chunk's made at it
+		if OS.is_process_running(_probe.pid):
+			return
+		fps = _rate(_probe.stdio.get_line())
+		_fps_of[url] = fps
+		_probe = {}
 	# keep the queue stocked: ffmpeg fetches faster than it plays, so the next chunk's landed before this one runs out.
 	# Workers finish out of order, so only the oldest is released: that keeps the queue in order
 	while not _jobs.is_empty() and not OS.is_process_running(_jobs[0].pid):
@@ -128,8 +149,8 @@ func _process(dt: float) -> void:
 	if paused:
 		return
 	_acc += dt
-	while _acc >= 1.0 / FPS:
-		_acc -= 1.0 / FPS
+	while _acc >= 1.0 / fps:
+		_acc -= 1.0 / fps
 		if not _next_frame():
 			_acc = 0.0
 			if _jobs.is_empty() and _queue.is_empty() and (not more or _empty >= 2):  # nothing left to come
@@ -150,7 +171,7 @@ func _start_chunk() -> bool:
 		"-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5",
 		"-ss", str(_src_pos), "-t", str(CHUNK_SEC), "-i", url,  # -t before -i bounds the input, so it covers both outputs
 		# fitted inside the frame at its own shape, black round it (never stretched)
-		"-vf", "scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,fps=%d" % [RES.x, RES.y, RES.x, RES.y, FPS],  # the picture: uncompressed rgb24, byte for byte what Image.FORMAT_RGB8 wants
+		"-vf", "scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,fps=%s" % [RES.x, RES.y, RES.x, RES.y, fps],  # the picture: uncompressed rgb24, byte for byte what Image.FORMAT_RGB8 wants
 		"-f", "rawvideo", "-pix_fmt", "rgb24", "-y", ProjectSettings.globalize_path(file),
 		"-vn", "-c:a", "libvorbis", "-q:a", "3", "-y", ProjectSettings.globalize_path(_ogg(_slot)),  # the sound: a second output of the same process
 	])
@@ -163,6 +184,14 @@ func _start_chunk() -> bool:
 	_slot = (_slot + 1) % RING
 	_src_pos += CHUNK_SEC
 	return true
+
+
+static func _rate(line: String) -> float:  # ffprobe's "avg,r" (each "24000/1001"): the average if it has one, else the nominal
+	for f in line.strip_edges().split(","):
+		var nd := f.split_floats("/")
+		if nd.size() == 2 and nd[0] > 0.0 and nd[1] > 0.0:
+			return clampf(nd[0] / nd[1], 1.0, MAX_FPS)
+	return FALLBACK_FPS
 
 
 func _chunk_ok(path: String) -> bool:  # (against a whole frame: that catches truncated ones too)
@@ -202,7 +231,7 @@ func _next_frame() -> bool:
 		if buf.size() == FRAME_BYTES:
 			texture.update(Image.create_from_data(RES.x, RES.y, false, Image.FORMAT_RGB8, buf))
 			tint = _frame_tint(buf)
-			position += 1.0 / FPS
+			position += 1.0 / fps
 			_shown += 1
 			if _shown == 1:
 				started.emit()

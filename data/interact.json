@@ -54,7 +54,7 @@
    "base": -1.5708,
    "openA": 1.5708,
    "push": true,
-   "locked": true,
+   "locked": false,
    "at": 2,
    "c": 28.9,
    "alongX": false,
