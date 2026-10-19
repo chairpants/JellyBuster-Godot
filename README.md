@@ -1,42 +1,51 @@
 # JellyVault
 
-VaultBuster's video store (`../VaultBusterGodot`) without the game: walk round it, take a tape off the shelf, put it
-in the TV. The shelves are stocked from a Jellyfin library instead of archive.org.
+A 90s video store to walk round, stocked from your own Jellyfin library. Every movie is a tape on the shelf, every
+season of a show is a tape; pick one up, carry it to the theater in back, and it plays on the big screen.
 
-Open `project.godot` in Godot 4.7 and press F5. Needs `ffmpeg` on the PATH (video.gd).
+The store is VaultBuster's (the web game), its shelves laid out the way VaultBuster lays them out: new releases round
+the outer walls, kids' titles in the front corner by the windows, older movies and TV on the low shelving in the
+middle, a section at a time, A to Z. A bigger library makes a deeper store.
 
-## Jellyfin
+## Running it
 
-The first run writes `%APPDATA%\Godot\app_userdata\JellyVault\jellyfin.cfg`. Fill in the server and an API key
-(Jellyfin Dashboard → API Keys):
+- [Godot 4.7](https://godotengine.org/) or later: open `project.godot`, press F5.
+- `ffmpeg` on your PATH (it's what plays the video).
+- A Jellyfin server, and an API key for it: in Jellyfin, Dashboard → API Keys → +.
 
-```ini
-[server]
-url="http://192.168.1.10:8096"
-api_key="..."
-```
-
-`godot --headless --path . --script tools/jellyfin_check.gd` checks the library's sort without a server.
-
-## Kept from VaultBuster
-
-The level (`world/world.scn`), player, clock, sky, weather, lights, room lighting, doors, seats, fixtures, loose
-things, sound, the HUD, tapes and the VCR. Gone: customers, staff, checkout, register, phone, chores, snacks, shift,
-cars, people, golf, arcade, menu, saves. The cover sheets and posters (`world/vaultbuster_133-150`, `166-187`) are
-8×8 grey stand-ins: covers come from Jellyfin. `world.scn` can't be rebuilt from the web game here (the .glb is gone).
+The first time it starts it asks for the server's address and the API key, and remembers them (in Godot's user data
+folder, `jellyfin.cfg`). F2 in the store asks again. Or pick the made-up library to look round without a server
+(`godot --path . -- --demo`, or `--demo=5000` for a big one).
 
 | Key | |
 |---|---|
 | WASD, mouse, Shift, Space, C | Walk, look, run, jump, crouch |
-| Click | A tape off the shelf (again: in hand; on its empty slot: back) · right-click: put it back |
-| E | Doors, seats, switches, lamps, ladders; at the TV, the tape in hand goes in (again: out) |
-| 1-9, wheel | Which carried tape is in hand |
-| [ ] / , . | Wind back/on 30 s / previous/next episode |
+| Click | A tape off the shelf, held up to look at; again: in your hand; on its empty slot: back it goes. Right-click: put it back |
+| 1-9, wheel | Which of the tapes you're carrying is in your hand |
+| E | Doors, seats, light switches, lamps, ladders; at the theater's screen, the tape in your hand goes in (again: out) |
+| [ ] / , . | Wind back / on 30 s; the episode before / after |
 | L / F / M / J | Skip an hour / fly / mute / fold the log |
+| F2 | The server settings |
+| Esc | Free the mouse |
+
+## Sections
+
+`data/genres.json` is the store's sections, in the order they're laid out, and which of Jellyfin's genres go in each.
+An item goes to the section that best fits its genres (its first genre counts most; a `strong` section, like Anime or
+Documentary, wins whenever it matches). `kids` sections go in the kids' corner. `new_from` is the year from which a
+movie's a new release, out on the walls. Edit it to taste.
+
+## What's what
 
 | File | |
 |---|---|
-| `jellyfin.gd` | Connects, fetches movies, series and episodes, sorts by genre then title, stocks the slots |
-| `tapes.gd` | Tapes on and off the shelves, in hand, into the VCR (slots from `data/tapes.json`) |
+| `jellyfin.gd` | The library (autoload `Library`): the settings, fetching, a tape per movie and per season, sorting into sections; covers, cached |
+| `store.gd` | The shelves: the layout (walls, kids, centre), the gondolas, the signs; how deep the store has to be |
+| `level.gd` | The level made that deep (autoload `Level`): what's past the lounge slides back, what crosses stretches |
+| `tapes.gd` | Tapes on and off the shelves, in hand, into the theater's projector |
 | `video.gd` | Plays a Jellyfin item through ffmpeg onto the screens |
-| the rest | As in VaultBuster's README |
+| `world/world.scn`, `data/interact.json` | VaultBuster's level and where everything in it is |
+| the rest | The player, doors, lights, the sky and weather, sound: VaultBuster's |
+
+`godot --headless --path . --script tools/jellyfin_check.gd` checks the sections and the layout without a server.
+`godot --path . -- --demo --shot --at=x,y,z,yaw,pitch` saves `shot.png` from there.

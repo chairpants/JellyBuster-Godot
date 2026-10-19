@@ -1,56 +1,142 @@
 extends Node
-## The library, from a Jellyfin server. Its address and an API key (Jellyfin's Dashboard → API Keys) go in
-## user://jellyfin.cfg, written blank the first time round:
-##     [server]
-##     url="http://192.168.1.10:8096"
-##     api_key="..."
-## At the start it fetches every movie and series (and the series' episodes) in two requests, makes a tape of each
-## movie and of each season, puts each in the store's section that best fits (data/genres.json), sorts them by section
-## then title. It's the autoload `Library`, and it goes first: the store's laid out to fit (store.gd plan(): how deep it
-## has to be, Level.dz) before the store's scene opens. Covers come as they're needed, cached in user://covers.
-## --demo[=N] makes up a library instead, no server needed.
+## The library, from a Jellyfin server. The first time round (or when it can't be reached) the loading screen asks
+## for the server's address and an API key (Jellyfin's Dashboard → API Keys → +), and keeps them in
+## user://jellyfin.cfg; F2 asks again, to change them. Or: a made-up library, to look round without a server.
+## It fetches every movie and series (and the series' episodes) in two requests, makes a tape of each movie and of
+## each season, puts each in the store's section that best fits (data/genres.json), sorts them by section then title.
+## It's the autoload `Library`, and it goes first: the store's laid out to fit (store.gd plan(): how deep it has to
+## be, Level.dz) before the store's scene opens. Covers come as they're needed, cached in user://covers.
+## --demo[=N] goes straight to a made-up library of N films (and series besides).
+
+signal chosen(what: String)  # the settings form: "connect" or "demo"
 
 const CFG := "user://jellyfin.cfg"
 
 var url := ""
 var key := ""
-var status := "Jellyfin: connecting…"
+var status := ""
 var demo := false
 var items: Array = []  # a tape each: { id, cover (item ids to try for its picture), t, sort, c (section), kind (movie / series), year, e (episodes, as video.gd plays them) }
 var plan := {}  # where everything goes (store.gd plan())
 
+
 func _ready() -> void:
-	var sections: Array = JSON.parse_string(FileAccess.get_file_as_string("res://data/genres.json")).sections
 	for a in OS.get_cmdline_user_args():
-		if a.begins_with("--demo"):  # --demo=N: a made-up library of N films, and series besides, no server needed
-			demo = true
-			var d := demo_library(a.get_slice("=", 1).to_int() if "=" in a else 600)
-			items = build(d.shows, d.eps, sections)
-			status = "Demo library: %d tapes" % items.size()
-			_open()
+		if a.begins_with("--demo"):
+			_demo(a.get_slice("=", 1).to_int() if "=" in a else 600)
 			return
 	var cfg := ConfigFile.new()
 	cfg.load(CFG)
-	url = str(cfg.get_value("server", "url", "")).trim_suffix("/")
-	key = str(cfg.get_value("server", "api_key", ""))
-	if url.is_empty() or key.is_empty():
-		cfg.set_value("server", "url", url)
-		cfg.set_value("server", "api_key", key)
-		cfg.save(CFG)
-		status = "Jellyfin: no server set · fill in %s (or run with --demo)" % ProjectSettings.globalize_path(CFG)
-		_open()
-		return
-	var shows = await _fetch("/Items?Recursive=true&IncludeItemTypes=Movie,Series&Fields=Genres,SortName,ProductionYear")
-	var eps = await _fetch("/Items?Recursive=true&IncludeItemTypes=Episode&Fields=SortName")
-	if shows != null and eps != null:
-		items = build(shows.Items, eps.Items, sections)
-		status = "Jellyfin: %d tapes" % items.size()
+	url = cfg.get_value("server", "url", "")
+	key = cfg.get_value("server", "api_key", "")
+	_start.call_deferred(url.is_empty() or key.is_empty())
+
+
+func _unhandled_input(e: InputEvent) -> void:
+	if e is InputEventKey and e.pressed and not e.echo and e.physical_keycode == KEY_F2 and get_tree().current_scene.name == "Main":  # F2: the server's settings again
+		get_tree().change_scene_to_file("res://loading.tscn")
+		_start.call_deferred(true)
+
+
+func _start(ask: bool) -> void:  # (on the loading screen) connect, asking for the server first if need be, and open the store
+	var why := ""
+	while true:
+		if ask:
+			if await _form(why) == "demo":
+				_demo(600)
+				return
+		_say("Connecting to %s…" % url)
+		var shows = await _fetch("/Items?Recursive=true&IncludeItemTypes=Movie,Series&Fields=Genres,SortName,ProductionYear")
+		var eps = await _fetch("/Items?Recursive=true&IncludeItemTypes=Episode&Fields=SortName") if shows != null else null
+		if shows != null and eps != null:
+			var cfg := ConfigFile.new()
+			cfg.set_value("server", "url", url)
+			cfg.set_value("server", "api_key", key)
+			cfg.save(CFG)
+			demo = false
+			items = build(shows.Items, eps.Items, _sections())
+			status = "Jellyfin: %d tapes" % items.size()
+			_open()
+			return
+		why = status
+		ask = true
+
+
+func _demo(n: int) -> void:
+	demo = true
+	var d := demo_library(n)
+	items = build(d.shows, d.eps, _sections())
+	status = "Demo library: %d tapes" % items.size()
 	_open()
+
+
+func _sections() -> Array:
+	return JSON.parse_string(FileAccess.get_file_as_string("res://data/genres.json")).sections
+
+
+func _say(text: String) -> void:  # the loading screen's line
+	var l = get_tree().current_scene.get_node_or_null("Label") if get_tree().current_scene else null
+	if l != null:
+		l.text = text
+
+
+func _form(why: String) -> String:  # the settings, on the loading screen: "connect" (url and key set) or "demo"
+	_say("")
+	var box := VBoxContainer.new()
+	box.set_anchors_and_offsets_preset(Control.PRESET_CENTER, Control.PRESET_MODE_KEEP_SIZE)
+	box.custom_minimum_size = Vector2(460, 0)
+	box.position -= Vector2(230, 140)
+	box.add_theme_constant_override("separation", 10)
+	var title := Label.new()
+	title.text = "Your Jellyfin server"
+	title.add_theme_font_size_override("font_size", 26)
+	title.add_theme_color_override("font_color", Color(1, 0.83, 0))
+	box.add_child(title)
+	var server := LineEdit.new()
+	server.placeholder_text = "Address, e.g. http://192.168.1.10:8096"
+	server.text = url
+	box.add_child(server)
+	var api := LineEdit.new()
+	api.placeholder_text = "API key (Dashboard → API Keys → +)"
+	api.text = key
+	api.secret = true
+	box.add_child(api)
+	var note := Label.new()
+	note.text = why
+	note.add_theme_color_override("font_color", Color(1, 0.5, 0.45))
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(note)
+	var go := Button.new()
+	go.text = "Connect"
+	box.add_child(go)
+	var try := Button.new()
+	try.text = "Look round with a made-up library instead"
+	try.flat = true
+	box.add_child(try)
+	get_tree().current_scene.add_child(box)
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	server.grab_focus()
+	var submit := func(_t := "") -> void:
+		if server.text.strip_edges() != "" and api.text.strip_edges() != "":
+			chosen.emit("connect")
+		else:
+			note.text = "Both, please: the server's address and an API key."
+	go.pressed.connect(submit)
+	server.text_submitted.connect(submit)
+	api.text_submitted.connect(submit)
+	try.pressed.connect(func() -> void: chosen.emit("demo"))
+	var what: String = await chosen
+	url = server.text.strip_edges().trim_suffix("/")
+	if not url.contains("://"):
+		url = "http://" + url
+	key = api.text.strip_edges()
+	box.queue_free()
+	return what
 
 
 func _open() -> void:  # the store, laid out round the library, opens
 	plan = preload("res://store.gd").plan(items, JSON.parse_string(FileAccess.get_file_as_string("res://data/genres.json")))
-	get_node("/root/Level").dz = plan.dz  # (by path: tools/jellyfin_check.gd loads this without the autoloads)
+	get_node("/root/Level").set_depth(plan.dz)  # (by path: tools/jellyfin_check.gd loads this without the autoloads)
 	get_tree().change_scene_to_file.call_deferred("res://main.tscn")
 
 

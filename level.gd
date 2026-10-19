@@ -16,6 +16,11 @@ var dz := 0.0
 var _data := {}
 
 
+func set_depth(d: float) -> void:  # (a new library: a new depth, and the spots moved to match)
+	dz = d
+	_data = {}
+
+
 func z(v: float) -> float:
 	return v + dz if v > SEAM else v
 

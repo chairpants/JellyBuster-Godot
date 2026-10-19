@@ -127,7 +127,7 @@ func toast(text: String) -> void:  # up top for a moment, and into the log
 func _process(dt: float) -> void:
 	var s := get_viewport().get_visible_rect().size
 	_clock.text = "%s %s" % [Clock.weekday(), Clock.fmt_clock(Clock.h)]
-	_status.text = Library.status
+	_status.text = Library.status + "  ·  F2: server settings"
 	_clock.position = Vector2(16, 8)
 	_now.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_now.reset_size()
