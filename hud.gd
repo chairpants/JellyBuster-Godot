@@ -135,6 +135,8 @@ func call_box(text: String) -> void:  # a decision waiting on you ("" clears it)
 func full_screen(pic: Texture2D) -> void:  # null: back to the room
 	_full.visible = pic != null
 	_full_pic.texture = pic
+	if _full_pic.material == null:
+		_full_pic.material = $"../Picture".material(false)
 	_cross.visible = pic == null
 
 

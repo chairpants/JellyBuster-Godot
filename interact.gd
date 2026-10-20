@@ -108,6 +108,10 @@ func _ready() -> void:
 			push_warning("no door at %s, %s in the level (moved, or deleted?)" % [d.x, d.z])
 			continue
 		d.merge({ "pivot": pivot, "a": 0.0, "v": 0.0, "side": 0, "open": false, "rattle": 0.0 })
+		if d.alongX:  # (the doorway's z, as deep as the store is: level.gd only moves keys called z)
+			d.at = Level.z(d.at)
+		else:
+			d.c = Level.z(d.c)
 		doors.append(d)
 		if d.push and not d.locked:  # a push door never blocks: it gets out of your way (chained shut, it does)
 			no_collide.append(pivot)

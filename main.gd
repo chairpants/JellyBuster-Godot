@@ -9,10 +9,11 @@ func _enter_tree() -> void:
 	for n: Node in $World.find_children("*", "Node3D", true, false):  # the drinks cooler, moved along the wall clear of the counter gate's swing (data/interact.json has it there: cooler.moved)
 		if not n is MeshInstance3D and n.get_child_count() > 100 and Vector2(n.position.x + 7.26, n.position.z - 5.25).length() < 0.02:  # (its own position: nothing's in the tree yet to have a global one)
 			n.position.z += cooler_dz
+	$World.get_node("out/group of 254").free()  # the level's parked car, stood in the lane the passing ones drive down (cars.gd)
 	var amb: Node = preload("res://ambience.gd").new()  # the store's sound, there before anything that makes a noise
 	amb.name = "Ambience"
 	add_child(amb)
-	for part: Array in [["Cars", preload("res://cars.gd")], ["Wheel", preload("res://wheel.gd")]]:  # the cars going by out front; the time and weather wheel (hold F)
+	for part: Array in [["Cars", preload("res://cars.gd")], ["Wheel", preload("res://wheel.gd")], ["Picture", preload("res://picture.gd")]]:  # the cars going by out front; the time and weather wheel (hold F); the TV's picture menu (P)
 		var n: Node = part[1].new()
 		n.name = part[0]
 		add_child(n)

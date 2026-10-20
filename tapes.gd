@@ -172,9 +172,7 @@ func stock(store: Node) -> void:  # the store's tapes onto its shelves (store.gd
 		var q := MeshInstance3D.new()
 		var quad := QuadMesh.new()
 		quad.size = Vector2(sc.w, sc.h)
-		var m := StandardMaterial3D.new()
-		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		quad.material = m
+		quad.material = $"../Picture".material(true)  # (the picture menu's brightness and the rest)
 		q.mesh = quad
 		if sc.has("q"):
 			q.basis = Basis(Quaternion(sc.q[0], sc.q[1], sc.q[2], sc.q[3]))
@@ -293,9 +291,10 @@ func _saver_tick(dt: float) -> void:
 func _screens_show(tape: bool) -> void:  # the tape's picture, or back to the bouncing logo
 	_on_screens = tape
 	for q in _quads:
-		var m: StandardMaterial3D = q.mesh.material
-		m.albedo_texture = video.texture if tape else _saver.get_texture()
-		m.albedo_color = Color(0.85, 0.85, 0.85) if tape else Color.WHITE  # (the web game's -15%: blown-out whites were blinding)
+		var m: ShaderMaterial = q.mesh.material
+		m.set_shader_parameter("uTex", video.texture if tape else _saver.get_texture())
+		m.set_shader_parameter("uFx", 1.0 if tape else 0.0)  # (the logo as it is)
+		m.set_shader_parameter("uK", 0.85 if tape else 1.0)  # (the web game's -15%: blown-out whites were blinding)
 
 
 func _cell(p: Vector3) -> Vector3i:
@@ -476,7 +475,7 @@ func _resume() -> void:  # what was in the VCR when the game last closed: off it
 				set_on_shelf(t, false)
 				video.audio.position = cf.get_value("vcr", "speaker", Vector3.ZERO)
 				video.audio.unit_size = cf.get_value("vcr", "reach", 3.0)
-				video.audio.bus = "Theater" if video.audio.unit_size > 5.0 else "Master"
+				_speaker(video.audio.unit_size > 5.0)
 				play_episode(i, t)
 				print("tapes: %s back in the VCR, from %s" % [t.e[i][1], _clock(t.at)])
 				return
@@ -636,8 +635,7 @@ func vcr_use() -> void:  # E on the screen: the tape in hand goes in, and the on
 		var tape: Dictionary = held
 		var old = playing.tape if playing != null else null
 		video.audio.position = Vector3(aim_tv.x, aim_tv.y, aim_tv.z)
-		video.audio.unit_size = 8.0 if aim_tv.kind == "theater" else 3.0  # (the theater's speakers: loud, and carrying)
-		video.audio.bus = "Theater" if aim_tv.kind == "theater" else "Master"  # (and the auditorium round them: ambience.gd's bus)
+		_speaker(aim_tv.kind == "theater")
 		play_episode(tape.ep, tape)  # it plays from wherever it's wound to
 		release()
 		if old != null:
@@ -691,3 +689,10 @@ func eject() -> void:
 	else:
 		set_on_shelf(tape, true)  # hands full (9 already): it goes home
 		hud.toast("%s went back on its shelf" % tape.t)
+
+
+func _speaker(theater: bool) -> void:  # a TV: a speaker in the room, fading off; the theater: the whole auditorium, as loud from any seat (ambience.gd's Theater bus does the room)
+	video.audio.unit_size = 8.0 if theater else 3.0  # (kept: the resume file tells them apart by it)
+	video.audio.attenuation_model = AudioStreamPlayer3D.ATTENUATION_DISABLED if theater else AudioStreamPlayer3D.ATTENUATION_INVERSE_DISTANCE
+	video.audio.attenuation_filter_db = 0.0 if theater else -24.0
+	video.audio.bus = "Theater" if theater else "Master"
