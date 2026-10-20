@@ -10,6 +10,10 @@ func _enter_tree() -> void:
 	var amb: Node = preload("res://ambience.gd").new()  # the store's sound, there before anything that makes a noise
 	amb.name = "Ambience"
 	add_child(amb)
+	for part: Array in [["Cars", preload("res://cars.gd")], ["Wheel", preload("res://wheel.gd")]]:  # the cars going by out front; the time and weather wheel (hold F)
+		var n: Node = part[1].new()
+		n.name = part[0]
+		add_child(n)
 
 
 func _ready() -> void:
@@ -25,7 +29,7 @@ func _ready() -> void:
 		if size.x > 100.0 and m.global_position.y + m.get_aabb().position.y > 8.0:
 			m.queue_free()  # the web game's clouds, caught mid-drift by an older export: sky.gd has the real ones
 			continue
-		if _walk_through(m) or m.get_aabb().get_longest_axis_size() < 0.2:
+		if _walk_through(m) or m.has_meta("walk_through") or m.get_aabb().get_longest_axis_size() < 0.2:  # (walk_through: set in the level, e.g. the theater's seats, whose backs have colliders of their own)
 			continue
 		var key := str($World.get_path_to(m))
 		if shapes.has(key):

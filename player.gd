@@ -1,8 +1,10 @@
 extends CharacterBody3D
 ## First person. WASD to walk, the mouse to look, Shift to run, Space to jump, hold C to crouch (the web game's: lower,
-## and slower). Sat down, the mouse wheel zooms in and out; getting up puts the view back.
+## and slower). Sat down, the mouse wheel zooms in and out; all the way in on a screen that's playing, one notch more and
+## its picture fills the view (the view held still), one back out and it's the room again (or F, in and out). Getting up
+## puts the view back. H hides the words on screen (hud.gd).
 ## E: whatever the crosshair's on (see interact.gd). Click: tapes (see tapes.gd). L: skip an hour (see clock.gd).
-## F: fly (through walls too; Space up, Ctrl down).
+## F, stood up: fly (through walls too; Space up, Ctrl down).
 ## Esc frees the mouse; click to take it back.
 
 const SPEED := 3.2
@@ -12,12 +14,16 @@ const SENS := 0.0025
 const EYE := 1.6  # the camera, above your feet
 const CROUCH_EYE := 1.03  # ...crouched (the web game: 1.06 of 1.65), and you go at 0.55 of your pace
 const FOV := 70.0
-const ZOOM := 28.0  # as far in as the wheel takes you, sat down
+const ZOOM := 15.0  # as far in as the wheel takes you, sat down (one notch more, looking at a screen that's playing: full screen)
+const F_HOLD := 0.35  # F held this long: the time and weather wheel (wheel.gd); let go sooner, it's a tap
+const FULL_AIM := 20.0  # degrees off a screen's middle you can be looking and still go full screen on it
 const SEAT_EYE := 0.72  # ...and above your hips, sat down (the web game's camera rides the body's head)
 
 var fly := false
 var seat = null  # the seat you're in (one of interact.gd's), or null
 var seat_fov := FOV  # sat down, the mouse wheel zooms; getting up puts it back
+var _f_held := -1.0  # F down this long (-1: it isn't, or it's done its job); held past F_HOLD, the time and weather wheel opens
+var full := false  # zoomed right in on a playing screen: its picture edge to edge, the view held still (the wheel back out lets it go)
 var crouched := false
 var sens_k := 1.0  # mouse sensitivity
 var invert_y := false
@@ -25,6 +31,9 @@ var _step_d := 0.0
 var climb = null  # on a ladder: { dir (1 up, -1 down), L (the ladder's climb), t, ... } (see fixtures.gd)
 
 @onready var cam: Camera3D = $Camera
+@onready var tapes: Node = $"../Tapes"
+@onready var video: Node = $"../Video"
+@onready var hud: CanvasLayer = $"../HUD"
 
 
 func _ready() -> void:
@@ -52,20 +61,55 @@ func _ready() -> void:
 
 
 func _unhandled_input(e: InputEvent) -> void:
-	if e is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+	if e is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and not full:
 		rotate_y(-e.relative.x * SENS * sens_k)
 		cam.rotation.x = clampf(cam.rotation.x - e.relative.y * SENS * sens_k * (-1.0 if invert_y else 1.0), -1.5, 1.5)
 	elif e is InputEventMouseButton and e.pressed and e.button_index <= MOUSE_BUTTON_MIDDLE and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED and OS.get_cmdline_user_args().is_empty():
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 		get_viewport().set_input_as_handled()  # (the click that takes the mouse back doesn't also pick something up)
 	elif e is InputEventMouseButton and e.pressed and seat != null and (e.button_index == MOUSE_BUTTON_WHEEL_UP or e.button_index == MOUSE_BUTTON_WHEEL_DOWN):
-		seat_fov = clampf(seat_fov + (2.0 if e.button_index == MOUSE_BUTTON_WHEEL_DOWN else -2.0), ZOOM, FOV)  # (a notch of the wheel: the web game's 100 * 0.02 degrees)
+		var into: bool = e.button_index == MOUSE_BUTTON_WHEEL_UP
+		if full and not into:
+			_full_screen(false)  # (back out: the room, as zoomed as it was)
+		elif into and seat_fov <= ZOOM and _on_a_screen():
+			_full_screen(true)
+		elif not full:
+			seat_fov = clampf(seat_fov + (-2.0 if into else 2.0), ZOOM, FOV)  # (a notch of the wheel: the web game's 100 * 0.02 degrees)
 	elif e is InputEventKey and e.pressed and not e.echo:
 		if e.physical_keycode == KEY_ESCAPE:
 			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-		elif e.physical_keycode == KEY_F and seat == null and climb == null:
-			fly = not fly
-			$Shape.disabled = fly
+		elif e.physical_keycode == KEY_F:
+			_f_held = 0.0  # (a tap or a hold: _process, and the key coming back up, tell which)
+	elif e is InputEventKey and not e.pressed and e.physical_keycode == KEY_F and _f_held >= 0.0:
+		_f_held = -1.0
+		_f_tap()
+
+
+func _f_tap() -> void:  # sat down with a tape on: full screen and back; stood up: flying
+	if seat != null and (full or _playing()):
+		_full_screen(not full)
+	elif seat == null and climb == null:
+		fly = not fly
+		$Shape.disabled = fly
+
+
+func _playing() -> bool:
+	return tapes.playing != null and not video.url.is_empty()
+
+
+func _on_a_screen() -> bool:  # a tape's playing, and you're looking at a screen it's on
+	if not _playing():
+		return false
+	var fwd := -cam.global_basis.z
+	for sc: Dictionary in Level.data().screens:
+		if rad_to_deg(fwd.angle_to(Vector3(sc.x, sc.y, sc.z) - cam.global_position)) < FULL_AIM:
+			return true
+	return false
+
+
+func _full_screen(on: bool) -> void:
+	full = on
+	hud.full_screen(video.texture if on else null)
 
 
 func sit(s: Dictionary) -> void:  # looking the way the seat faces
@@ -117,6 +161,13 @@ func _climb(dt: float) -> void:  # walk the step to the foot, then up and out (o
 func _process(dt: float) -> void:
 	if seat == null:
 		seat_fov = FOV  # walking resets the seat's zoom
+	if _f_held >= 0.0:
+		_f_held += dt
+		if _f_held >= F_HOLD:
+			_f_held = -1.0
+			$"../Wheel".open()
+	if full and (seat == null or not _playing()):
+		_full_screen(false)  # (got up, or the tape's out: back to the room)
 	cam.fov += (seat_fov - cam.fov) * minf(1.0, dt * 8.0)
 	crouched = seat == null and climb == null and not fly and Input.is_physical_key_pressed(KEY_C)
 	if seat == null and climb == null:

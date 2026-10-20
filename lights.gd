@@ -24,6 +24,8 @@ var _warm := {}  # zone -> { t, duration, schedules } while its tubes restrike
 var _windows: Array[SpotLight3D] = []  # daylight (or the night) in through the storefront glass
 var _glows: Array[Light3D] = []  # the screens: lit with the colour of what's on them
 var _glow := Color.BLACK
+var _beam: SpotLight3D  # the projector's: from the booth's port to the screen, a shaft in the haze the colour of the picture, heavily averaged
+var _beam_c := Color.BLACK
 var _panels := {}  # zone -> [the material of each ceiling panel in it]
 var _boxes := {}
 var plates := {}  # zone -> the zones that share its switch plate
@@ -43,6 +45,9 @@ const BULB_ON := Color(1.0, 0.949, 0.769)  # 0xfff2c4
 const BULB_OFF := Color(0.227, 0.22, 0.2)  # 0x3a3833
 const DAYLIGHT := 1.5  # how strong each is at noon
 const SCREEN_GAIN := 7.0  # the TV's light, for a full-white frame
+const THEATER_GLOW := { "gain": 14.0, "out": 2.0 }  # the theater screen's light on the house: not by its size (that blew the stage and curtains out, and the bloom off them washed the picture), and from a little way out, clear of what's round it
+const PORT := [-1.42, 2.25, 33.17]  # the projection booth's port, over the back of the auditorium (the level's lens)
+const BEAM := { "angle": 15.0, "energy": 0.4, "fog": 3.0, "follow": 1.2, "clear": 2.5 }  # wide enough for the screen's corners; barely lights what it lands on, but shows in the haze; follow: how fast its colour chases the picture's (slow: an average); clear: the haze-free stretch before the screen
 const PANEL_ON := Color(1.31, 1.33, 1.35)  # 0xf8fbff, and brighter than white: a lit panel blooms (room.gd)
 const SPILL := 0.55  # light through a doorway, for a fully lit room next to a dark one
 const ZONE_K := { "closet": 0.8, "theater": 0.3 }  # how bright a room is with its light on, next to the rest (room.gd's shader)
@@ -137,16 +142,41 @@ func _ready() -> void:
 	for sc: Dictionary in all.screens:  # the TV and the theater's screen: out into the room they face, with shadows
 		var g := SpotLight3D.new()
 		var dir := Vector3(sin(sc.ry), 0, cos(sc.ry))
-		g.position = Vector3(sc.x, sc.y, sc.z) + dir * 0.1
+		var theater: bool = sc.kind == "theater"
+		if sc.kind == "tv":
+			RenderingServer.global_shader_parameter_set("uVidAt", Vector3(sc.x, sc.y, sc.z) + dir)  # (the room's light: the picture's glow round the TV, room.gd)
+		g.position = Vector3(sc.x, sc.y, sc.z) + dir * (THEATER_GLOW.out if theater else 0.1)
 		g.basis = Basis.looking_at(dir)
 		g.spot_range = 24.0 if sc.kind == "tv" else 15.0
 		g.spot_angle = 82.0
 		g.spot_attenuation = 1.2
 		g.light_specular = 0.0
 		g.shadow_enabled = true
-		g.set_meta("gain", SCREEN_GAIN * (sc.w * sc.h) / 2.16)  # (a bigger screen's more light: the TV's is 1.8 x 1.2)
+		g.light_volumetric_fog_energy = 0.0  # (else it lights the haze between you and the screen: a big glowing disc over the picture)
+		g.set_meta("gain", THEATER_GLOW.gain if theater else SCREEN_GAIN * (sc.w * sc.h) / 2.16)  # (a bigger screen's more light: the TV's is 1.8 x 1.2)
 		add_child(g)
 		_glows.append(g)
+		if theater:
+			var to := Vector3(sc.x, sc.y, sc.z)
+			_beam = SpotLight3D.new()
+			_beam.position = Vector3(PORT[0], PORT[1], Level.z(PORT[2]))
+			_beam.basis = Basis.looking_at((to - _beam.position).normalized())
+			_beam.spot_range = _beam.position.distance_to(to) + 1.0
+			_beam.spot_angle = BEAM.angle
+			_beam.spot_attenuation = 0.0  # (it doesn't fade toward the screen's edges)
+			_beam.light_specular = 0.0
+			_beam.light_energy = BEAM.energy
+			_beam.light_volumetric_fog_energy = BEAM.fog
+			_beam.shadow_enabled = true  # (whoever stands up in it)
+			add_child(_beam)
+			var clear := FogVolume.new()  # no haze for the last stretch before the screen: the shaft stops short of it, and nothing glows over the picture
+			clear.shape = RenderingServer.FOG_VOLUME_SHAPE_BOX
+			clear.size = Vector3(sc.w + 1.0, sc.h + 1.0, BEAM.clear)
+			clear.material = FogMaterial.new()
+			clear.material.density = -1.0
+			clear.position = to + dir * (BEAM.clear / 2.0)
+			clear.rotation.y = sc.ry
+			add_child(clear)
 	for m: Dictionary in all.minis:  # the monitors over the aisles: a little pool under each
 		var g := OmniLight3D.new()
 		g.position = Vector3(m.p[0], m.p[1], m.p[2]) + Basis(Quaternion(m.q[0], m.q[1], m.q[2], m.q[3])).z * 0.25
@@ -351,10 +381,15 @@ func _process(dt: float) -> void:  # fluorescents restriking, tube by tube (ligh
 			l.basis = Basis.looking_at((into * 0.8 + Vector3.DOWN * 0.6).normalized())
 			l.light_color = ZONE_TINT.get(p.a if la > lb else p.b, Color.WHITE)
 	_glow = _glow.lerp(video.tint, minf(1.0, dt * 6.0))  # the light chases the picture
+	RenderingServer.global_shader_parameter_set("uVid", Vector4(_glow.r, _glow.g, _glow.b, 1.0))  # (and lights the room it's in, as ambient: room.gd. Not made linear: a dark film's colour would be next to nothing)
 	for g in _glows:
 		g.light_color = _glow
 		g.light_energy = g.get_meta("gain")
 		g.visible = _glow.v > 0.004
+	if _beam != null:
+		_beam_c = _beam_c.lerp(video.tint, minf(1.0, dt * BEAM.follow))
+		_beam.light_color = _beam_c
+		_beam.visible = _beam_c.v > 0.004
 	for zone: String in _warm.keys():
 		var w: Dictionary = _warm[zone]
 		w.t += dt

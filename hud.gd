@@ -18,6 +18,11 @@ var _log_open := true
 var _inv := _label(15)
 var _bar := HBoxContainer.new()  # what you're carrying: nine slots
 var _slots: Array = []
+var _full := ColorRect.new()  # zoomed all the way in on a screen: the picture, edge to edge (full_screen), under everything else here
+var _full_pic := TextureRect.new()
+var _seek := ColorRect.new()  # rewinding / fast-forwarding: how far through it'll pick up, bottom middle (seek_bar)
+var _seek_fill := ColorRect.new()
+var _seek_text := _label(18, Color(1, 0.83, 0))
 var _fade := ColorRect.new()
 var _fade_text := _label(40)
 
@@ -43,11 +48,27 @@ func _ready() -> void:
 	_bar.add_theme_constant_override("separation", 6)
 	_bar.visible = false
 	add_child(_bar)
+	_full.color = Color.BLACK
+	_full_pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_full_pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_full.add_child(_full_pic)
+	var under := CanvasLayer.new()  # (a layer of its own, under this one: H hides the words, not the picture)
+	under.layer = layer - 1
+	under.add_child(_full)
+	get_parent().add_child.call_deferred(under)
+	_full.visible = false
+	_seek.color = Color(0, 0, 0, 0.55)
+	_seek_fill.color = Color(1, 0.83, 0)
+	_seek.add_child(_seek_fill)
+	add_child(_seek)
+	seek_bar(-1.0, 0.0, "")
 
 
 func _unhandled_input(e: InputEvent) -> void:
 	if e is InputEventKey and e.pressed and not e.echo and e.physical_keycode == KEY_J:
 		_log_open = not _log_open
+	if e is InputEventKey and e.pressed and not e.echo and e.physical_keycode == KEY_H:  # every word on screen, off and back (a full-screen picture stays: it's a layer of its own)
+		visible = not visible
 
 
 func tip(text: String) -> void:
@@ -111,6 +132,19 @@ func call_box(text: String) -> void:  # a decision waiting on you ("" clears it)
 	_call.text = text
 
 
+func full_screen(pic: Texture2D) -> void:  # null: back to the room
+	_full.visible = pic != null
+	_full_pic.texture = pic
+	_cross.visible = pic == null
+
+
+func seek_bar(at: float, length: float, text: String) -> void:  # at < 0: hidden
+	_seek.visible = at >= 0.0
+	_seek_text.visible = _seek.visible
+	_seek_text.text = text
+	_seek_fill.size = Vector2(_seek.size.x * (clampf(at / length, 0.0, 1.0) if length > 0.0 else 0.0), _seek.size.y)
+
+
 func now_playing(text: String) -> void:
 	_now.text = text
 
@@ -146,7 +180,13 @@ func _process(dt: float) -> void:
 	_fade_text.visible = _fade.visible
 	_fade_text.position = (s - _fade_text.size) / 2.0
 	_cross.position = (s - _cross.size) / 2.0
+	_full.size = s
+	_full_pic.size = s
 	_inv.position = Vector2((s.x - _inv.size.x) / 2.0, s.y - 44.0)
 	_bar.position = Vector2((s.x - (9 * 92 + 8 * 6)) / 2.0, s.y - 80.0)
 	_tip.position = Vector2((s.x - _tip.size.x) / 2.0, s.y * 0.78)
+	_seek.size = Vector2(minf(640.0, s.x * 0.6), 10.0)
+	_seek.position = Vector2((s.x - _seek.size.x) / 2.0, s.y - 112.0)
+	_seek_text.reset_size()
+	_seek_text.position = Vector2((s.x - _seek_text.size.x) / 2.0, _seek.position.y - _seek_text.size.y - 4.0)
 	_toast.position = Vector2((s.x - _toast.size.x) / 2.0, s.y * 0.12)

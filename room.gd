@@ -40,6 +40,12 @@ global uniform vec3 uMoonSky; global uniform vec3 uMoonGround; global uniform ve
 global uniform vec3 uDayC; global uniform vec3 uNightC;
 global uniform float uSunReal;  // 1: the sun's the real light (the moon's a term here); 0: the other way about
 global uniform vec4 uFog;       // from indoors: the weather's fog on what's out there (its colour, how thick). The engine's own is off while you're inside: it would fog the room too
+const float VID_TV = 0.9;        // how much of the picture's colour the TV throws on what's right by it...
+const float VID_TV_R = 3.0;      // ...halved this far out
+const float VID_FLOOR = 0.06;    // the monitors over the aisles: a little of it the whole floor over
+const float VID_THEATER = 0.5;   // the theater's screen: on everything in the house
+global uniform vec4 uVid;       // the picture that's playing: its colour, averaged (rgb), how much it's on (a). It lights the room it's in, over whatever else is (lights.gd)
+global uniform vec3 uVidAt;     // the lounge TV, a little out from its face
 uniform vec4 albedo : source_color = vec4(1.0);
 uniform sampler2D tex : source_color, FILTER, repeat_enable;
 uniform bool use_tex = false;
@@ -81,6 +87,8 @@ void fragment() {
 		// (the web game's daylight is all here, unshadowed: (0.42 + 0.9 * win). Here it comes in as real light, with shadows,
 		// from lights.gd, and this is only what bounces round: next to nothing at the back)
 		rl = (uZone.x * w1 + uZone.y * w2 + uZone.z * w3) * fl + (day * uDayC + (1.0 - day) * uNightC) * (0.015 + 0.16 * win * win) * facing;
+		vec3 tv = P - uVidAt;
+		rl += uVid.rgb * uVid.a * (VID_TV / (1.0 + dot(tv, tv) / (VID_TV_R * VID_TV_R)) + VID_FLOOR);   // the TV's glow, a pool round the lounge; and the monitors over the aisles, a little everywhere
 	} else if (P.x > uBohBox.x && P.x < uBohBox.y && P.z >= uFloorBox.z && P.z < uBohBox.w && P.y < uBohSplit.y + 0.05 && (P.z < uBohBox.z || P.x < uFloorBox.y)) {
 		bool closet = P.x > uFloorBox.y && P.z < uBohBox.z;   // the janitor's closet: one bare bulb, warm
 		float lvl = closet ? 0.8 * uBoh.w : P.z < uBohBox.z ? uBoh.x : (P.x < uBohSplit.x ? uBoh.y : uBoh.z);
@@ -89,6 +97,7 @@ void fragment() {
 		rl = (0.04 + 0.96 * uThLight.x) * fl * vec3(1.08, 0.93, 0.80);
 	} else if (P.x > uThBox.x && P.x < uThBox.y && P.z >= uThBox.z && P.z < uThBox.w && P.y < uFloorBox.w + 0.1) {
 		rl = (0.025 + 0.30 * uThLight.y + 0.12 * uThSconce) * fl * vec3(1.15, 0.82, 0.55);   // house lights + a low warm sconce wash
+		rl += uVid.rgb * uVid.a * VID_THEATER;   // the picture, off the screen onto the walls, the ceiling, the seats
 	} else {
 		vec3 sun = mix(uSunGround, uSunSky, 0.5 * rN.y + 0.5) + uSunC * max(dot(rN, uSunDir), 0.0) * (1.0 - uSunReal);
 		vec3 moon = mix(uMoonGround, uMoonSky, 0.5 * rN.y + 0.5) + uMoonC * max(dot(rN, uMoonDir), 0.0) * uSunReal;
@@ -132,6 +141,8 @@ func _enter_tree() -> void:  # (before anything's _ready: tapes.gd keeps hold of
 	_add("uThSconce", RS.GLOBAL_VAR_TYPE_FLOAT, 1.0)
 	_add("uSunReal", RS.GLOBAL_VAR_TYPE_FLOAT, 1.0)
 	_add("uFog", RS.GLOBAL_VAR_TYPE_VEC4, Vector4.ZERO)
+	_add("uVid", RS.GLOBAL_VAR_TYPE_VEC4, Vector4.ZERO)
+	_add("uVidAt", RS.GLOBAL_VAR_TYPE_VEC3, Vector3.ZERO)
 	var fixed := {  # lin(colour, k), as the web game sets them
 		"uInSky": _lin(0xdfe8ff, 1.15), "uInGround": _lin(0x223355, 1.15), "uInAmb": _lin(0xffffff, 0.32), "uInDirC": _lin(0xffffff, 0.55),
 		"uInDir": Vector3(3, 10, -6).normalized(),

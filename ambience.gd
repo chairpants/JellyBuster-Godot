@@ -36,6 +36,7 @@ var _tap := false
 var _swings := {}  # a swinging door's leaf -> { p: its air, speed } (by the node: the door's own record changes as it swings, and can't be a key)
 
 const VOICES := 6
+const CAR_RUN := 60.0  # a car going by comes from this far up the road and goes as far down it (cars.gd shows it)
 const VOWELS := [[730.0, 1090.0], [530.0, 1840.0], [270.0, 2290.0], [570.0, 840.0], [300.0, 870.0], [660.0, 1720.0], [490.0, 1350.0]]
 const UNITS := [[-2.6, 9.5, 0.0], [4.6, 19.5, 120.0]]  # the rooftop units: x, z, where each is in its cycle (roof.js)
 
@@ -142,6 +143,16 @@ func bag(at: Vector3) -> void:  # a full liner pulled out and tied off: plastic 
 
 func chute(at: Vector3, bags: int) -> void:  # the hopper door tipping open, the bag(s) in and away down the duct, the door slapping shut
 	_shot("chute%d" % clampi(bags, 1, 3), at, 0.5, 2.0)
+
+
+func car_at() -> Variant:  # the car going by, where it is on the road now (cars.gd draws it): null when there isn't one
+	if _pass.is_empty():
+		return null
+	return Vector3(_pass.dir * (_pass.v * _pass.t - CAR_RUN), -0.12, -15.45 if _pass.dir > 0.0 else -18.75)  # (right-hand lanes)
+
+
+func car_pass() -> Dictionary:  # { dir, v, t, g }, or {} (the same one till it's gone: cars.gd tells them apart by it)
+	return _pass
 
 
 func drive(dir: int, v: float) -> void:  # a car on the road out front that's turning in to the lot: heard the same as one going by (cars.gd shows it itself)
@@ -284,13 +295,12 @@ func _process(dt: float) -> void:
 		_pass = { "dir": 1.0 if randf() < 0.5 else -1.0, "v": 10.0 + randf() * 7.0, "t": 0.0, "g": (0.7 if night > 0.6 else 1.0) * (0.7 + randf() * 0.5) }
 	if not _pass.is_empty():
 		_pass.t += dt
-		var x: float = _pass.dir * (_pass.v * _pass.t - 35.0)
-		var lane := -15.45 if _pass.dir > 0.0 else -18.75  # right-hand lanes
-		var away := Vector2(x, lane - 8.0).length()  # heard from about the middle of the store
-		_loops.car.position = Vector3(x, 0.6, lane)
-		_loops.car.pitch_scale = 343.0 / (343.0 + _pass.dir * _pass.v * x / away)  # the Doppler shift
+		var at: Vector3 = car_at()
+		var away := Vector2(at.x, at.z - 8.0).length()  # heard from about the middle of the store
+		_loops.car.position = at + Vector3(0, 0.6, 0)
+		_loops.car.pitch_scale = 343.0 / (343.0 + _pass.dir * _pass.v * at.x / away)  # the Doppler shift
 		_level(_loops.car, _pass.g * 0.45, dt, 20.0)
-		if _pass.t > 70.0 / _pass.v:
+		if _pass.t > 2.0 * CAR_RUN / _pass.v:
 			_pass = {}
 	else:
 		_level(_loops.car, 0.0, dt, 20.0)

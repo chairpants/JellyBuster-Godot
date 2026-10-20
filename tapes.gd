@@ -6,7 +6,7 @@ extends Node
 ## still looking: back it goes. Click its empty slot: back it goes. Click with one in hand: held up again.
 ## E at the theater's screen or the lounge's TV: the tape in hand goes in and plays there (and on the other screens, and
 ## the CRTs hung over the aisles); E again: out it comes.
-## Up to 9 carried; 1-9 or the wheel picks which is in hand. [ ] wind 30 s, , . the episode before / after.
+## Up to 9 carried; 1-9 or the wheel picks which is in hand. , . held: rewind / fast-forward (a bar at the bottom; it plays from there half a second after they're let go). [ ] the episode before / after.
 ## R: turn the tape in hand over (held up, close), to read the back of its box (backbox.gd); R again: the front.
 ##
 ## The shelves' tapes are drawn a chunk of CHUNK at a time (a MultiMesh each), their covers layers of a texture array,
@@ -19,24 +19,28 @@ const CHUNK := 1024  # tapes per draw call (and per texture array)
 const COVER := Vector2i(128, 192)  # a cover on the shelf. ponytail: uncompressed RGB, ~100 MB a chunk; VRAM-compress them if a big library runs short
 const WORKERS := 6  # covers fetching at once
 const YELLOW := Color(1, 0.831, 0)
-const SHADER := """
-shader_type spatial;
+const SCRUB_HOLD := 0.25  # rewind / fast-forward: held this long before it starts winding
+const SCRUB_WAIT := 0.5  # and after both keys are let go, this long before it plays from there
+const RESUME := "user://vcr.cfg"  # what's in the VCR, and how far in: kept as it plays, so the next start picks it up (_resume)
+const RESUME_EVERY := 5.0
+const TAPE_UNIFORMS := """uniform float scissor = 0.5;
 uniform sampler2DArray covers : source_color, filter_linear_mipmap_anisotropic;
 uniform vec3 size;
 varying vec2 face_uv;
 varying float front;
-varying float layer;
-void vertex() {
+varying float layer;"""
+const TAPE_VERTEX := """void vertex() {
 	face_uv = vec2(VERTEX.x / size.x + 0.5, 0.5 - VERTEX.y / size.y);
 	front = NORMAL.z;
-	layer = INSTANCE_CUSTOM.r;
-}
-void fragment() {
-	bool cover = front > 0.5;
-	ALBEDO = cover ? texture(covers, vec3(face_uv, round(layer))).rgb : vec3(0.04);
-	ROUGHNESS = cover ? 0.35 : 0.7;  // (the clamshell's sheen)
-}
-"""
+	layer = INSTANCE_CUSTOM.r;"""
+
+
+static func _shader() -> String:  # the room's own light (room.gd), on a cover from the array (the box's other faces black): lit like the shelf it's on
+	return preload("res://room.gd").SHADER.replace("MODES", "cull_back").replace("ALPHA_CODE", "").replace("FILTER", "filter_linear_mipmap") \
+		.replace("uniform float scissor = 0.5;", TAPE_UNIFORMS).replace("void vertex() {", TAPE_VERTEX) \
+		.replace("vec4 a = albedo;", "vec4 a = front > 0.5 ? vec4(texture(covers, vec3(face_uv, round(layer))).rgb, 1.0) : vec4(vec3(0.04), 1.0);")
+
+
 var HAND := Transform3D(Basis.from_euler(Vector3(0.05, -0.4, 0.06)), Vector3(0.3, -0.28, -0.55))  # carried
 var LOOK := Transform3D(Basis.IDENTITY, Vector3(0, 0, -0.22))  # held up, cover to you: about 60% of the screen's height (fov 70)
 var LOOK_BACK := Transform3D(Basis(Vector3.UP, PI), Vector3(0, 0, -0.165))  # turned over, closer: the small print, the box about 85% of the screen's height
@@ -55,6 +59,8 @@ var playing = null  # { tape, idx }
 var inv: Array = []  # the tapes you're carrying, the one in hand among them
 var inv_sel := -1  # which of them is in hand (-1: empty-handed)
 
+var _resume_t := 0.0
+var _scrub := { "to": -1.0, "held": 0.0, "wait": 0.0, "dir": 1.0 }  # rewinding / fast-forwarding: to where (-1: not), how long the key's been held, the wait after it's let go
 var _grid := {}  # cell -> [tape index]
 var _chunks: Array = []  # { mm: MultiMesh, tex: Texture2DArray }
 var _hand := Node3D.new()
@@ -127,7 +133,7 @@ func stock(store: Node) -> void:  # the store's tapes onto its shelves (store.gd
 	var colours := {}  # a colour per section, till the covers come
 	var mat := ShaderMaterial.new()
 	mat.shader = Shader.new()
-	mat.shader.code = SHADER
+	mat.shader.code = _shader()
 	mat.set_shader_parameter("size", size)
 	for i in tapes.size():
 		var t: Dictionary = tapes[i]
@@ -178,6 +184,7 @@ func stock(store: Node) -> void:  # the store's tapes onto its shelves (store.gd
 		_quads.append(q)
 	_screens_show(false)
 	print("tapes: %d on the shelves in %d chunks" % [tapes.size(), _chunks.size()])
+	_resume()
 	_gen += 1
 	_next_cover = 0
 	for w in WORKERS:
@@ -429,18 +436,81 @@ func _process(dt: float) -> void:
 	if held != null:
 		_hand.transform = _hand.transform.interpolate_with((LOOK_BACK if flipped else LOOK) if inspecting else HAND, minf(1.0, dt * 14.0))
 	hud.inventory(inv.map(func(e: Dictionary) -> Dictionary: return { "name": e.t, "used": wind_frac(e) }), inv_sel)
-	hud.now_playing("%s%s\n%s%s%s   [ ] wind · , . episode" % ["❚❚ " if video.paused else "▶ ", playing.tape.t, "%d of %d · " % [playing.idx + 1, playing.tape.e.size()] if playing.tape.e.size() > 1 else "", _clock(video.position), " / " + _clock(video.duration) if video.duration > 0.0 else ""] if playing != null and not video.url.is_empty() else "")
+	_scrub_tick(dt)
+	hud.now_playing("%s%s\n%s%s%s   hold , . rewind/FF · [ ] episode" % ["❚❚ " if video.paused else "▶ ", playing.tape.t, "%d of %d · " % [playing.idx + 1, playing.tape.e.size()] if playing.tape.e.size() > 1 else "", _clock(video.position), " / " + _clock(video.duration) if video.duration > 0.0 else ""] if playing != null and not video.url.is_empty() else "")
 	if playing != null and not video.url.is_empty():  # the tape winds forward as it plays
 		playing.tape.ep = playing.idx
 		playing.tape.at = video.position
 		if video.duration > 0.0:
 			playing.tape.d = video.duration
+		_resume_t += dt
+		if _resume_t >= RESUME_EVERY:
+			_resume_t = 0.0
+			_resume_save()
 
 
-func seek_by(d: float) -> void:  # wind it on, or back, where it sits in the machine
+func _resume_save() -> void:  # (nothing in the machine: nothing to pick up next time)
+	if playing == null:
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(RESUME))
+		return
+	var cf := ConfigFile.new()
+	cf.set_value("vcr", "id", playing.tape.e[playing.idx][2])
+	cf.set_value("vcr", "at", video.position)
+	cf.set_value("vcr", "speaker", video.audio.position)
+	cf.set_value("vcr", "reach", video.audio.unit_size)
+	cf.save(RESUME)
+
+
+func _resume() -> void:  # what was in the VCR when the game last closed: off its shelf and back in, from where it was
+	var cf := ConfigFile.new()
+	if cf.load(RESUME) != OK:
+		return
+	var id: String = cf.get_value("vcr", "id", "")
+	for t: Dictionary in tapes:
+		for i in t.e.size():
+			if t.e[i][2] == id:
+				t.ep = i
+				t.at = cf.get_value("vcr", "at", 0.0)
+				set_on_shelf(t, false)
+				video.audio.position = cf.get_value("vcr", "speaker", Vector3.ZERO)
+				video.audio.unit_size = cf.get_value("vcr", "reach", 3.0)
+				play_episode(i, t)
+				print("tapes: %s back in the VCR, from %s" % [t.e[i][1], _clock(t.at)])
+				return
+
+
+func _scrub_tick(dt: float) -> void:  # rewind / fast-forward: held, the spot it'll pick up from runs back or on (faster the longer it's held), on the bar at the bottom; both let go, and a moment later it's there
+	var rew := Input.is_physical_key_pressed(KEY_COMMA)
+	var ff := Input.is_physical_key_pressed(KEY_PERIOD)
+	if playing == null or video.url.is_empty() or Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+		rew = false
+		ff = false
+		if playing == null:
+			_scrub.to = -1.0
+	if rew or ff:
+		if _scrub.to < 0.0:
+			_scrub.to = video.position
+			_scrub.held = 0.0
+		_scrub.held += dt
+		_scrub.wait = SCRUB_WAIT
+		_scrub.dir = (1.0 if ff else 0.0) - (1.0 if rew else 0.0)
+		if _scrub.held > SCRUB_HOLD:  # (a tap does nothing: only held)
+			var speed := minf(10.0 * pow(2.0, _scrub.held - SCRUB_HOLD), 300.0)  # seconds of tape a second: 10, doubling every second held, up to 5 minutes
+			_scrub.to = clampf(_scrub.to + _scrub.dir * speed * dt, 0.0, video.duration if video.duration > 0.0 else INF)
+	elif _scrub.to >= 0.0:
+		_scrub.wait -= dt
+		if _scrub.wait <= 0.0:
+			if _scrub.held > SCRUB_HOLD:
+				seek_to(_scrub.to)
+			_scrub.to = -1.0
+	var shown: bool = _scrub.to >= 0.0 and _scrub.held > SCRUB_HOLD
+	hud.seek_bar(_scrub.to if shown else -1.0, video.duration, ("◀◀ " if _scrub.dir < 0.0 else "▶▶ ") + _clock(_scrub.to) + (" / " + _clock(video.duration) if video.duration > 0.0 else "") if shown else "")
+
+
+func seek_to(to: float) -> void:  # wind it to there, where it sits in the machine
 	if playing == null or video.url.is_empty():
 		return
-	var to := maxf(0.0, video.position + d)
+	to = maxf(0.0, to)
 	if video.duration > 0.0 and to >= video.duration - 1.0:
 		step_episode(1)  # off the end of this one
 		return
@@ -454,17 +524,14 @@ func _clock(t: float) -> String:
 
 
 func _unhandled_input(e: InputEvent) -> void:
-	if e is InputEventKey and e.pressed and playing != null:  # the VCR's transport: [ and ] wind it back and on (held: keeps going), , and . the one before and the next on the tape
+	if e is InputEventKey and e.pressed and not e.echo and playing != null:  # the VCR's transport: [ and ] the one before and the next on the tape (, and . rewind and fast-forward, held: _scrub_tick)
 		match e.physical_keycode:
-			KEY_BRACKETLEFT: seek_by(-30.0)
-			KEY_BRACKETRIGHT: seek_by(30.0)
-			KEY_COMMA:
-				if not e.echo and playing.idx > 0:
+			KEY_BRACKETLEFT:
+				if playing.idx > 0:
 					playing.tape.at = 0.0
 					play_episode(playing.idx - 1)
-			KEY_PERIOD:
-				if not e.echo:
-					step_episode(1)
+			KEY_BRACKETRIGHT:
+				step_episode(1)
 	if e is InputEventKey and e.pressed and not e.echo and e.physical_keycode == KEY_R and held != null and player.seat == null:  # turn it over (held up first, if it was only carried)
 		flipped = not flipped or not inspecting
 		inspecting = true
@@ -613,6 +680,7 @@ func eject() -> void:
 	var tape: Dictionary = playing.tape
 	video.stop()
 	playing = null
+	_resume_save()
 	_screens_show(false)
 	if inv_make_room():
 		_take(tape)  # the tape comes back out into your hand

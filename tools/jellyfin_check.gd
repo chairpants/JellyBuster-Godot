@@ -8,14 +8,14 @@ func _init() -> void:
 	assert(C.call(["Horror"]) == "Horror")
 	assert(C.call(["Comedy", "Horror"]) == "Comedy")  # first listed wins...
 	assert(C.call(["Comedy", "Anime"]) == "Anime")  # ...unless the other's strong
-	assert(C.call(["Drama", "History"]) == "Drama")
-	assert(C.call(["Animation", "Family", "Comedy"]) == "Animation")
-	assert(C.call(["Mockumentary"]) == "Drama")  # nothing matches: the movies' fallback
-	assert(C.call([]) == "Drama")
+	assert(C.call(["Drama", "History"]) == "Drama & Romance")
+	assert(C.call(["Animation", "Family", "Comedy"]) == "Family & Animation")
+	assert(C.call(["Mockumentary"]) == "Drama & Romance")  # nothing matches: the movies' fallback
+	assert(C.call([]) == "Drama & Romance")
 	assert(C.call(["COMEDY"], "series") == "TV Comedy")  # (any case; series to TV sections)
 	assert(C.call(["Animation", "Comedy"], "series") == "Cartoons")
 	assert(C.call([], "series") == "TV Drama")
-	assert(C.call(["Western", "Drama"], "series") == "Westerns")  # (a section for both)
+	assert(C.call(["Western", "Drama"], "series") == "TV Drama")
 	var shows := [
 		{ "Id": "m1", "Type": "Movie", "Name": "The Thing", "SortName": "Thing", "Genres": ["Horror"], "RunTimeTicks": 65000000000 },
 		{ "Id": "m2", "Type": "Movie", "Name": "Alien", "Genres": ["Horror", "Science Fiction"] },
@@ -52,6 +52,6 @@ func _init() -> void:
 			var laid: Array = S.lay(p[a], r[a])
 			assert(laid.reduce(func(acc: int, b: Array) -> int: return acc + b[1].filter(func(t) -> bool: return t != null).size(), 0) == p[a].size())
 		if n <= 300:
-			assert(p.k == 0)  # (a small library: VaultBuster's own size)
+			assert(p.k < 0)  # (a small library: smaller than VaultBuster's store)
 	print("jellyfin_check: ok")
 	quit()

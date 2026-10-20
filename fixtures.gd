@@ -43,7 +43,7 @@ func _ready() -> void:
 			_flap_gate = n
 		elif p.distance_to(_v(ladders.hatch.lid)) < 0.02:
 			_lid = n
-		elif p.distance_to(Vector3(0, ladders.back.raise, 0)) < 0.02 and n.get_child_count() >= 8:
+		elif p.distance_to(Vector3(0, ladders.back.raise, Level.dz)) < 0.02 and n.get_child_count() >= 8:  # (out back: moved with the store's depth, level.gd)
 			_slide = n
 	if _flap_pivot:  # no leaf over the pass-through: it's an open gap in the counter, gate and all
 		_flap_pivot.visible = false

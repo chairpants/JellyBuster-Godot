@@ -1,7 +1,8 @@
 extends Node
 ## The level (`Level`), made as deep as the library needs. Everything past SEAM (the line between the last of the
 ## centre's shelf bands and the lounge) slides back by dz: whole things move, and what crosses the line (the side walls,
-## the floor and ceiling, the roof, the stripes) stretches, its texture carried on rather than pulled long. Every spot
+## the floor and ceiling, the roof, the stripes) stretches, its texture carried on rather than pulled long. A smaller
+## library (dz < 0) cuts out the strip just before SEAM instead: what's wholly in it goes, what crosses it closes up. Every spot
 ## the scripts know about goes through here too: data() is data/interact.json with its z's past SEAM moved, and z()
 ## moves one of their own. store.gd sets dz (layout()) before the store's scene loads.
 ##
@@ -9,7 +10,7 @@ extends Node
 ## and its tapes, the header strips and endcap tags, the candy rack, the Staff Picks topper.
 
 const SEAM := 20.3
-const LAYOUT_TEX := [105, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132]  # textures only VaultBuster's layout used (vaultbuster_N): the Staff Picks topper, strips, tags
+const LAYOUT_TEX := [88, 89, 90, 91, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132]  # textures only VaultBuster's layout used (vaultbuster_N): the endcap tags, the Staff Picks topper, strips, tags
 const SHELF_COLORS := ["ffffff", "eef0f2", "9aa3ad", "1c4dbb"]  # the merged tape bodies, backings, boards, uprights
 
 var dz := 0.0
@@ -21,8 +22,19 @@ func set_depth(d: float) -> void:  # (a new library: a new depth, and the spots 
 	_data = {}
 
 
-func z(v: float) -> float:
-	return v + dz if v > SEAM else v
+func z(v: float) -> float:  # (shallower: what was in the strip cut out before SEAM closes up onto its front edge)
+	return v + dz if v > SEAM else SEAM + dz if v > SEAM + dz else v
+
+
+func _cut(v, key: String) -> bool:  # a spot (or box) wholly in the strip a shallower store cuts out: dropped from data()
+	if dz >= 0.0:
+		return false
+	var zs := []
+	if v is Dictionary and v.get("p") is Array and v.p.size() == 3:
+		zs = [v.p[2]]
+	elif v is Array and v.size() in [3, 4] and v.all(func(e) -> bool: return e is float or e is int):
+		zs = [v[2]] if v.size() == 3 else [v[2], v[3]] if key in ["boh", "lobby", "theater", "colliders"] else []
+	return not zs.is_empty() and zs.all(func(q: float) -> bool: return q > SEAM + dz and q <= SEAM)
 
 
 func data() -> Dictionary:  # data/interact.json, moved to fit
@@ -45,7 +57,7 @@ func _moved(v, key: String):
 			return [v[0], v[1], z(v[2]), v[3]]
 		if nums and v.size() == 4 and key in ["boh", "lobby", "theater", "colliders", ""]:  # [x0, x1, z0, z1]
 			return [v[0], v[1], z(v[2]), z(v[3])]
-		return v.map(func(e) -> Variant: return _moved(e, "" if key == "colliders" else key))
+		return v.filter(func(e) -> bool: return not _cut(e, key)).map(func(e) -> Variant: return _moved(e, "" if key == "colliders" else key))
 	return v
 
 
@@ -76,11 +88,12 @@ static func texture_of(m: MeshInstance3D) -> String:  # its first surface's pict
 	return tex.resource_path.get_file() if tex != null else ""
 
 
-func stretch(world: Node3D) -> void:  # everything past SEAM back by dz (in the tree: global positions)
-	if dz > 0.0:
+func stretch(world: Node3D) -> void:  # everything past SEAM back by dz (in the tree: global positions); dz < 0 brings it forward, over a strip cut out before SEAM
+	if dz != 0.0:
 		for c in world.get_children():
 			if c is Node3D:
 				_shift(c)
+	if dz > 0.0:
 		_tile_ceiling(world.get_node("store"))
 
 
@@ -117,13 +130,15 @@ func _tile_ceiling(store: Node3D) -> void:  # the light panels over the new floo
 func _shift(n: Node3D) -> void:
 	var box := _bounds(n)
 	if box.size == Vector3.ZERO and box.position == Vector3.ZERO:  # nothing to see: by where it is
-		if n.global_position.z > SEAM:
-			n.global_position.z += dz
+		n.global_position.z = z(n.global_position.z)
 		return
 	if box.position.z > SEAM:
 		n.global_position.z += dz
 		return
-	if box.end.z <= SEAM:
+	if box.end.z <= minf(SEAM, SEAM + dz):
+		return
+	if box.position.z > SEAM + dz and box.end.z <= SEAM:  # wholly in the cut-out strip
+		n.free()
 		return
 	if n is MeshInstance3D:  # across the line: its far end goes back
 		_stretch_mesh(n)
@@ -166,10 +181,11 @@ func _stretch_mesh(m: MeshInstance3D) -> void:
 						grad[tri[k + j]] = g
 		for i in vs.size():
 			var w := xf * vs[i]
-			if w.z > SEAM:
-				vs[i] = inv * (w + Vector3(0, 0, dz))
+			var by := z(w.z) - w.z
+			if by != 0.0:
+				vs[i] = inv * (w + Vector3(0, 0, by))
 				if uvs != null:
-					uvs[i] += grad[i] * dz
+					uvs[i] += grad[i] * by
 		a[Mesh.ARRAY_VERTEX] = vs
 		if uvs != null:
 			a[Mesh.ARRAY_TEX_UV] = uvs
