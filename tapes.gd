@@ -474,6 +474,7 @@ func _resume() -> void:  # what was in the VCR when the game last closed: off it
 				set_on_shelf(t, false)
 				video.audio.position = cf.get_value("vcr", "speaker", Vector3.ZERO)
 				video.audio.unit_size = cf.get_value("vcr", "reach", 3.0)
+				video.audio.bus = "Theater" if video.audio.unit_size > 5.0 else "Master"
 				play_episode(i, t)
 				print("tapes: %s back in the VCR, from %s" % [t.e[i][1], _clock(t.at)])
 				return
@@ -634,6 +635,7 @@ func vcr_use() -> void:  # E on the screen: the tape in hand goes in, and the on
 		var old = playing.tape if playing != null else null
 		video.audio.position = Vector3(aim_tv.x, aim_tv.y, aim_tv.z)
 		video.audio.unit_size = 8.0 if aim_tv.kind == "theater" else 3.0  # (the theater's speakers: loud, and carrying)
+		video.audio.bus = "Theater" if aim_tv.kind == "theater" else "Master"  # (and the auditorium round them: ambience.gd's bus)
 		play_episode(tape.ep, tape)  # it plays from wherever it's wound to
 		release()
 		if old != null:

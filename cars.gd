@@ -7,19 +7,20 @@ extends Node3D
 const COLOURS := ["#b3262e", "#1c4dbb", "#e8e4d8", "#222428", "#2f6b3a", "#8a8f96", "#c9a227", "#5a2a6e", "#7a4a2a", "#3e6f8f", "#a8adb2"]
 # each from the side (x forward, y up, metres): the body to the beltline; the cabin's four corners (the foot of the
 # windshield, the roof's front and back, the foot of the back window); where the pillars between the windows are (from
-# the roof's front to its back, 0..1); the wheels' x and size; how wide; a pickup's bed
+# the roof's front to its back, 0..1); the wheels' x and size; how wide; its engine's note (ambience.gd's car, times
+# this); a pickup's bed
 const TYPES := {
 	"sedan": { "body": [[-2.3, 0.28], [2.3, 0.28], [2.33, 0.5], [2.28, 0.7], [1.05, 0.86], [-1.55, 0.88], [-2.28, 0.84], [-2.33, 0.5]],
-		"cabin": [[1.05, 0.86], [0.2, 1.36], [-0.95, 1.36], [-1.55, 0.88]], "pillars": [0.45], "wx": 1.4, "wr": 0.32, "w": 0.86 },
+		"cabin": [[1.05, 0.86], [0.2, 1.36], [-0.95, 1.36], [-1.55, 0.88]], "pillars": [0.45], "wx": 1.4, "wr": 0.32, "w": 0.86, "note": 1.0 },
 	"hatchback": { "body": [[-1.95, 0.28], [1.95, 0.28], [1.98, 0.5], [1.92, 0.68], [0.95, 0.84], [-1.92, 0.88], [-1.98, 0.5]],
-		"cabin": [[0.95, 0.84], [0.15, 1.36], [-1.45, 1.34], [-1.9, 0.88]], "pillars": [0.5], "wx": 1.25, "wr": 0.3, "w": 0.82 },
+		"cabin": [[0.95, 0.84], [0.15, 1.36], [-1.45, 1.34], [-1.9, 0.88]], "pillars": [0.5], "wx": 1.25, "wr": 0.3, "w": 0.82, "note": 1.22 },
 	"wagon": { "body": [[-2.4, 0.28], [2.4, 0.28], [2.43, 0.5], [2.38, 0.7], [1.15, 0.86], [-2.38, 0.9], [-2.43, 0.5]],
-		"cabin": [[1.15, 0.86], [0.3, 1.38], [-2.22, 1.38], [-2.36, 0.9]], "pillars": [0.36, 0.7], "wx": 1.5, "wr": 0.32, "w": 0.88 },
+		"cabin": [[1.15, 0.86], [0.3, 1.38], [-2.22, 1.38], [-2.36, 0.9]], "pillars": [0.36, 0.7], "wx": 1.5, "wr": 0.32, "w": 0.88, "note": 0.95 },
 	"pickup": { "body": [[-2.5, 0.34], [2.5, 0.34], [2.53, 0.56], [2.48, 0.82], [1.25, 0.98], [-2.48, 0.98], [-2.53, 0.56]],
-		"cabin": [[1.25, 0.98], [0.65, 1.62], [-0.45, 1.62], [-0.52, 0.98]], "pillars": [], "wx": 1.6, "wr": 0.36, "w": 0.9,
+		"cabin": [[1.25, 0.98], [0.65, 1.62], [-0.45, 1.62], [-0.52, 0.98]], "pillars": [], "wx": 1.6, "wr": 0.36, "w": 0.9, "note": 0.78,
 		"bed": [-2.38, -0.62] },
 	"minivan": { "body": [[-2.35, 0.3], [2.35, 0.3], [2.38, 0.52], [2.3, 0.75], [1.6, 0.92], [-2.32, 0.95], [-2.38, 0.52]],
-		"cabin": [[1.6, 0.92], [0.75, 1.62], [-2.18, 1.66], [-2.3, 0.95]], "pillars": [0.3, 0.64], "wx": 1.45, "wr": 0.32, "w": 0.92 },
+		"cabin": [[1.6, 0.92], [0.75, 1.62], [-2.18, 1.66], [-2.3, 0.95]], "pillars": [0.3, 0.64], "wx": 1.45, "wr": 0.32, "w": 0.92, "note": 0.88 },
 }
 
 var _cars := {}  # type -> { node, wheels, beam, wr }
@@ -60,7 +61,9 @@ func _process(_dt: float) -> void:
 		_pass = p
 		if not _car.is_empty():
 			_car.node.visible = false
-		_car = _cars[_cars.keys().pick_random()]
+		var type: String = _cars.keys().pick_random()
+		_car = _cars[type]
+		p.pitch = TYPES[type].note
 		var c := Color(COLOURS.pick_random())
 		if _lit_paint is ShaderMaterial:
 			_lit_paint.set_shader_parameter("albedo", c)
