@@ -131,7 +131,7 @@ func _ready() -> void:
 		var w := SpotLight3D.new()
 		w.position = Vector3(lerpf(f[0], f[1], (i + 0.5) / WINDOWS), 2.0, 0.45)
 		w.basis = Basis.looking_at(Vector3(0, -0.1, 1).normalized())
-		w.spot_range = 36.0
+		w.spot_range = f[2] + 0.5  # (to the back wall and no further: past it, its shadows are drawn for nothing)
 		w.spot_angle = 80.0
 		w.spot_attenuation = 1.4  # (fading toward the back, as the web game's does)
 		w.light_specular = 0.0
@@ -341,7 +341,7 @@ func _flicker_schedule(duration: float) -> Array:  # when one tube's lit while i
 
 func _process(dt: float) -> void:  # fluorescents restriking, tube by tube (lightingTick)
 	for r: Array in _rockers:  # the rocker snaps up / down with its zone (main.js)
-		r[0].rotation.x += ((-0.32 if zone_on[r[1]] else 0.32) - r[0].rotation.x) * minf(1.0, dt * 25.0)
+		Level.put(r[0], "rotation:x", Level.ease_to(r[0].rotation.x, -0.32 if zone_on[r[1]] else 0.32, dt * 25.0))
 	var day: Vector3 = sky.day_c * sky.level + Vector3(0.035, 0.045, 0.08) * (1.0 - sky.level)  # what comes in through the glass: daylight, or moonlight and the lot's lamps
 	for w in _windows:
 		w.light_color = Color(day.x, day.y, day.z).linear_to_srgb()

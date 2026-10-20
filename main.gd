@@ -2,6 +2,8 @@ extends Node3D
 ## The level (world/world.scn) made solid: everything you can see gets a collision shape of its own triangles. Not the
 ## doors you walk through (push doors, the storefront's: see interact.gd), and not things too small to bump into.
 
+const SMALL := 1.0  # things no bigger than this corner to corner throw no shadow: over half the level's meshes, each drawn again for every light with shadows, for shadows too small to see
+
 func _enter_tree() -> void:
 	var cooler_dz: float = Level.data().things.cooler.get("moved", 0.0)
 	for n: Node in $World.find_children("*", "Node3D", true, false):  # the drinks cooler, moved along the wall clear of the counter gate's swing (data/interact.json has it there: cooler.moved)
@@ -29,6 +31,8 @@ func _ready() -> void:
 		if size.x > 100.0 and m.global_position.y + m.get_aabb().position.y > 8.0:
 			m.queue_free()  # the web game's clouds, caught mid-drift by an older export: sky.gd has the real ones
 			continue
+		if (m.global_transform * m.get_aabb()).size.length() < SMALL:
+			m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		if _walk_through(m) or m.has_meta("walk_through") or m.get_aabb().get_longest_axis_size() < 0.2:  # (walk_through: set in the level, e.g. the theater's seats, whose backs have colliders of their own)
 			continue
 		var key := str($World.get_path_to(m))

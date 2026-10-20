@@ -166,6 +166,7 @@ func _ready() -> void:  # the sun (or the moon) as a real light, and what the pi
 	sun.light_specular = 0.0
 	sun.light_volumetric_fog_energy = 0.0
 	sun.directional_shadow_max_distance = 90.0
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS  # (four drew the whole level four times over)
 	sun.shadow_blur = 1.5
 	sun.shadow_bias = 0.06
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR  # (white, at 1: ALBEDO carries the room's light)

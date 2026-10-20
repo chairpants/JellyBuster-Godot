@@ -165,7 +165,7 @@ func _process(dt: float) -> void:
 		if on_stool:
 			player.rotation.y += d
 	if _stool_top:
-		_stool_top.rotation.y = _angle
+		Level.put(_stool_top, "rotation:y", _angle)
 	if on_stool and (Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_D)):
 		_stool_stand()  # any move key gets you up
 	if carrying != "":  # carried a little ahead of you; where it would go down, if there's a clear line there
@@ -178,7 +178,7 @@ func _process(dt: float) -> void:
 		q.exclude = [player.get_rid()]
 		_spot_ok = player.get_world_3d().direct_space_state.intersect_ray(q).is_empty()
 	if _cooler:
-		_cooler.rotation.y += ((T.cooler.openA if cooler_open else 0.0) - _cooler.rotation.y) * minf(1.0, dt * 5.0)  # swings out ~100 degrees
+		Level.put(_cooler, "rotation:y", Level.ease_to(_cooler.rotation.y, T.cooler.openA if cooler_open else 0.0, dt * 5.0))  # swings out ~100 degrees
 	if flush_t > 0.0 and _water:  # the bowl drains and refills after a flush
 		flush_t = maxf(0.0, flush_t - dt)
 		var t := 6.0 - flush_t
@@ -197,10 +197,11 @@ func _process(dt: float) -> void:
 	var k := (0.06 + 0.9 * pow(1.0 - sky.level, 1.5)) if cine_on else 0.0
 	_blue += ((0.0 if tapes.playing != null and video._shown > 0 else 1.0) - _blue) * minf(1.0, dt * 4.0)
 	_sheet.visible = k > 0.0
-	if _cloth:
+	if _cloth and _cloth.material_overlay != (_sheet_mat if k > 0.0 else null):  # (each only when it changes: a material touched, everything it's on is, and every light that sees them draws its shadows again)
 		_cloth.material_overlay = _sheet_mat if k > 0.0 else null
-	_sheet_mat.set_shader_parameter("uProj", k)
-	_sheet_mat.set_shader_parameter("uBlue", _blue)
+	for p: Array in [["uProj", k], ["uBlue", _blue]]:
+		if _sheet_mat.get_shader_parameter(p[0]) != p[1]:
+			_sheet_mat.set_shader_parameter(p[0], p[1])
 
 
 # ---- what the crosshair's on (called from interact.gd, after the doors); returns the tip, "" if it's nothing of ours

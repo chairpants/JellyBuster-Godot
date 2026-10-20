@@ -49,8 +49,14 @@ func _start(ask: bool) -> void:  # (on the loading screen) connect, asking for t
 				_demo(600)
 				return
 		_say("Connecting to %s…" % url)
-		var shows = await _fetch("/Items?Recursive=true&IncludeItemTypes=Movie,Series&Fields=Genres,SortName,ProductionYear")
-		var eps = await _fetch("/Items?Recursive=true&IncludeItemTypes=Episode&Fields=SortName") if shows != null else null
+		var got := {}  # both asked for at once; no images or watched state wanted (they doubled the wait for the episodes)
+		var ask_for := func(k: String, what: String) -> void: got[k] = await _fetch("/Items?Recursive=true&EnableImages=false&EnableUserData=false&EnableTotalRecordCount=false&" + what)
+		ask_for.call("shows", "IncludeItemTypes=Movie,Series&Fields=Genres,SortName,ProductionYear")
+		ask_for.call("eps", "IncludeItemTypes=Episode&Fields=SortName")
+		while got.size() < 2:
+			await get_tree().process_frame
+		var shows = got.shows
+		var eps = got.eps
 		if shows != null and eps != null:
 			var cfg := ConfigFile.new()
 			cfg.set_value("server", "url", url)

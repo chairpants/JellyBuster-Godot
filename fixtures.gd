@@ -68,7 +68,7 @@ func _process(dt: float) -> void:
 	if _flap_gate:
 		_gate_tick(dt)
 	if _lid:
-		_lid.rotation.x += ((-ladders.hatch.lidA if player.climb != null and player.climb.L == ladders.hatch.climb else 0.0) - _lid.rotation.x) * minf(1.0, dt * 2.5)
+		Level.put(_lid, "rotation:x", Level.ease_to(_lid.rotation.x, -ladders.hatch.lidA if player.climb != null and player.climb.L == ladders.hatch.climb else 0.0, dt * 2.5))
 	if _slide and back_down and _slide.position.y > 0.0:  # the back ladder coming down: it falls
 		_slide_v += 14.0 * dt
 		_slide.position.y = maxf(0.0, _slide.position.y - _slide_v * dt)
@@ -178,7 +178,7 @@ func _gate_tick(dt: float) -> void:
 		if gate.moving:
 			gate.moving = false
 			$"../Ambience".door("push", "settle", _flap_gate.global_position + Vector3(0.8, 1.0, 0.0))
-	_flap_gate.rotation.y = gate.a
+	Level.put(_flap_gate, "rotation:y", gate.a)
 	$"../Ambience".swing(_flap_gate, _flap_gate.global_position + Vector3(0.8, 1.0, 0.0), absf(gate.v))
 
 

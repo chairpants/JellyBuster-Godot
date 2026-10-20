@@ -17,6 +17,15 @@ var dz := 0.0
 var _data := {}
 
 
+static func ease_to(at: float, to: float, k: float) -> float:  # a step of an ease toward to that lands on it, rather than creeping at it for ever
+	return at + (to - at) * minf(1.0, k) if absf(to - at) > 0.001 else to
+
+
+static func put(n: Node3D, path: NodePath, v: float) -> void:  # n's rotation:y (say) set to v, only if that moves it: anything moved, every light that sees it draws its shadows again
+	if n.get_indexed(path) != v:
+		n.set_indexed(path, v)
+
+
 func set_depth(d: float) -> void:  # (a new library: a new depth, and the spots moved to match)
 	dz = d
 	_data = {}

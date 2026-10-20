@@ -128,12 +128,12 @@ func _process(dt: float) -> void:
 		if d.push:
 			_push_door(d, dt)
 			continue
-		d.a += ((d.openA if d.open else 0.0) - d.a) * minf(1.0, dt * 5.0)  # doors ease open and closed; a locked one rattles briefly when tried
+		d.a = Level.ease_to(d.a, d.openA if d.open else 0.0, dt * 5.0)  # doors ease open and closed; a locked one rattles briefly when tried
 		d.rattle = maxf(0.0, d.rattle - dt)
 		if d.get("closing", false) and absf(d.a) < 0.04:  # (the thump comes when it meets the frame)
 			d.closing = false
 			$"../Ambience".door("wood", "close", _door_at(d))
-		d.pivot.rotation.y = d.base + d.a + (0.012 * sin(d.rattle * 70.0) if d.rattle > 0.0 else 0.0)
+		Level.put(d.pivot, "rotation:y", d.base + d.a + (0.012 * sin(d.rattle * 70.0) if d.rattle > 0.0 else 0.0))
 	_front_door(dt)
 	if _hold >= 0.0:
 		_hold += dt
@@ -174,7 +174,7 @@ func _push_door(d: Dictionary, dt: float) -> void:  # whoever's in the doorway s
 		if d.get("moving", false):
 			d.moving = false
 			$"../Ambience".door("push", "settle", _door_at(d))
-	d.pivot.rotation.y = d.base + d.a
+	Level.put(d.pivot, "rotation:y", d.base + d.a)
 	$"../Ambience".swing(d.pivot, _door_at(d), absf(d.v))
 
 
@@ -197,7 +197,7 @@ func _front_door(dt: float) -> void:  # anyone right at the door: it swings open
 	front.k = clampf(front.k + (2.2 if front.open else -1.3) * dt, 0.0, 1.0)
 	if was > 0.0 and front.k == 0.0:
 		$"../Ambience".door("push", "settle", Vector3(0.9, 1.1, 0.1))
-	front.leaf.rotation.y = front.openA * (1.0 - pow(1.0 - front.k, 2.0))
+	Level.put(front.leaf, "rotation:y", front.openA * (1.0 - pow(1.0 - front.k, 2.0)))
 
 
 func _aim() -> void:  # what the crosshair's on, and what E would do about it
