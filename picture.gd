@@ -1,6 +1,6 @@
 extends CanvasLayer
 ## The TV's picture menu (the web game's SETTINGS, on the TV): brightness, contrast, colour, tint, sharpen, volume, and
-## B&W, scanlines, pixelated. P (or right-click, sat down) opens it, the mouse free; P, right-click, Esc or a click off
+## B&W, scanlines, pixelated. P (or right-click, sat down or with a tape playing) opens it, the mouse free; P, right-click, Esc or a click off
 ## it closes it. The same settings on every screen, the theater's and full screen too; kept in user://picture.cfg.
 
 const ROWS := [  # [key, label, min, max, step] (no min: a toggle)
@@ -124,7 +124,7 @@ func _show(s: Dictionary) -> void:  # the controls to these (each one's signal s
 			_rows[k].set_pressed_no_signal(s[k])
 		else:
 			_rows[k].set_value_no_signal(s[k])
-		_rows[k].emit_signal("toggled" if _rows[k] is CheckBox else "value_changed", s[k])
+		_rows[k].emit_signal("toggled" if _rows[k] is CheckBox else "value_changed", s[k] if _rows[k] is CheckBox else _rows[k].value)  # (the slider's: a saved one past its range comes back in it)
 
 
 func _put(k: String, v: Variant) -> void:
@@ -146,7 +146,7 @@ func _apply() -> void:
 		m.set_shader_parameter("uScan", 1.0 if tv.scanlines else 0.0)
 		m.set_shader_parameter("uPix", 1.0 if tv.pixelated else 0.0)
 	var audio: AudioStreamPlayer3D = $"../Video".audio
-	audio.volume_db = linear_to_db(tv.volume / 100.0)
+	audio.volume_db = 10.0 * log(maxf(tv.volume, 1.0) / 100.0) / log(2.0)  # (as loud as it sounds: twice as loud, +10 dB, at 200; half, -10, at 50)
 
 
 func open() -> void:
@@ -162,10 +162,12 @@ func close() -> void:
 func _unhandled_input(e: InputEvent) -> void:  # (the panel's own clicks never get here: its controls take them)
 	var p_key: bool = e is InputEventKey and e.pressed and not e.echo and e.physical_keycode == KEY_P
 	var right: bool = e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_RIGHT
+	var tapes: Node = $"../Tapes"
+	var putting_back: bool = tapes.held != null and tapes.held == tapes.peek  # (right-click's that, then: tapes.gd)
 	if _panel.visible:
 		if p_key or right or e is InputEventKey and e.pressed and e.physical_keycode == KEY_ESCAPE or e is InputEventMouseButton and e.pressed:
 			close()
 			get_viewport().set_input_as_handled()
-	elif p_key or right and $"../Player".seat != null and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+	elif p_key or right and ($"../Player".seat != null or tapes.playing != null and not putting_back) and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		open()
 		get_viewport().set_input_as_handled()

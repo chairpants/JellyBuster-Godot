@@ -53,7 +53,7 @@ func _ready() -> void:
 	add_child(audio)
 	audio.position = Vector3.ZERO  # (the TV's, once a tape goes in: tapes.gd)
 	audio.unit_size = 3.0
-	audio.max_db = 6.0
+	audio.max_db = 10.0  # (the picture menu's VOLUME at 200, twice as loud: picture.gd)
 	_has_ffmpeg = OS.execute("ffmpeg", ["-version"], []) == 0
 
 

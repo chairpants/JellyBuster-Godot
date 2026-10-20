@@ -43,12 +43,11 @@ const GLASS_HZ := 650.0  # what of the road gets through the storefront glass (o
 const OPEN_HZ := 9000.0
 var _out := 0.0  # 0 in the building, 1 out in the open (eased: the door's a second's walk)
 var _glass: AudioEffectLowPassFilter
-const THEATER_DB := { "theater": 0.0, "lobby": -16.0 }  # the Theater bus, by where you are (anywhere else: -34)
 
 
 func _init() -> void:  # buses of its own: Store (so M can shut it all up); Room into it (a little of the room on the chime, steps and doors);
 	# Outside into it (what's out front: through the glass from in here, a lowpass that opens up when you're out there);
-	# and Theater, the movie's in the auditorium (a big room; not under M: it's the film)
+	# (the film's on none of them: straight to Master from the screen, video.gd)
 	if AudioServer.get_bus_index("Store") >= 0:
 		return
 	_bus("Store", "Master")
@@ -56,19 +55,6 @@ func _init() -> void:  # buses of its own: Store (so M can shut it all up); Room
 	var glass := AudioEffectLowPassFilter.new()
 	glass.cutoff_hz = GLASS_HZ
 	_bus("Outside", "Store", glass)
-	_bus("Theater", "Master", _verb(0.8, 0.45, 0.08, 35.0))
-	AudioServer.get_bus_effect(AudioServer.get_bus_index("Theater"), 0).hipass = 0.3  # (the room's tail without the bass in it: that was mud)
-	var eq := AudioEffectEQ6.new()  # (a little more low end and air; then squeezed and brought up, cinema-loud)
-	eq.set_band_gain_db(1, 4.0)
-	eq.set_band_gain_db(5, 2.0)
-	var squeeze := AudioEffectCompressor.new()
-	squeeze.threshold = -24.0
-	squeeze.ratio = 2.5
-	squeeze.attack_us = 5000.0
-	squeeze.gain = 14.0  # (+4 dB on top: the film straight to both speakers, unpanned, lands about that much quieter)
-	var th := AudioServer.get_bus_index("Theater")
-	AudioServer.add_bus_effect(th, eq, 0)
-	AudioServer.add_bus_effect(th, squeeze, 1)
 
 
 func _bus(nm: String, to: String, fx: AudioEffect = null) -> void:
@@ -296,9 +282,6 @@ func _process(dt: float) -> void:
 	var snow: float = weather.k if weather.kind == "snow" else 0.0
 	_out = move_toward(_out, 1.0 if outdoors or lights.zone_at(you) == "" else 0.0, dt * 1.5)  # out the door (or up on the roof): the road's no longer through the glass, and the store's own sounds are behind you
 	_glass.cutoff_hz = GLASS_HZ * pow(OPEN_HZ / GLASS_HZ, _out)
-	var zone: String = lights.zone_at(you)
-	var th := AudioServer.get_bus_index("Theater")  # the film's as loud anywhere in the auditorium; through its doors, a rumble
-	AudioServer.set_bus_volume_db(th, move_toward(AudioServer.get_bus_volume_db(th), THEATER_DB.get(zone, -34.0), dt * 40.0))
 	var indoors := 1.0 - 0.8 * _out
 	for i in ZONES.size():
 		_level(_hums[i], lights.zone_lvl.get(ZONES[i][0], 0.0) * 0.0045 * indoors, dt, 12.0)  # follows the switch (and the flicker as it strikes)

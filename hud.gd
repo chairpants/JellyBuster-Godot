@@ -60,14 +60,19 @@ func _ready() -> void:
 	_seek.color = Color(0, 0, 0, 0.55)
 	_seek_fill.color = Color(1, 0.83, 0)
 	_seek.add_child(_seek_fill)
-	add_child(_seek)
+	var kept := CanvasLayer.new()  # (a layer of its own too: H hides the words, not where a rewind's got to)
+	kept.layer = layer
+	kept.add_child(_seek)
+	remove_child(_seek_text)
+	kept.add_child(_seek_text)
+	get_parent().add_child.call_deferred(kept)
 	seek_bar(-1.0, 0.0, "")
 
 
 func _unhandled_input(e: InputEvent) -> void:
 	if e is InputEventKey and e.pressed and not e.echo and e.physical_keycode == KEY_J:
 		_log_open = not _log_open
-	if e is InputEventKey and e.pressed and not e.echo and e.physical_keycode == KEY_H:  # every word on screen, off and back (a full-screen picture stays: it's a layer of its own)
+	if e is InputEventKey and e.pressed and not e.echo and e.physical_keycode == KEY_H:  # every word on screen, off and back (a full-screen picture, the seek bar and the picture menu stay: layers of their own)
 		visible = not visible
 
 
