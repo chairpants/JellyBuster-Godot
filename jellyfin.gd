@@ -5,7 +5,7 @@ extends Node
 ## It fetches every movie and series (and the series' episodes) in two requests, makes a tape of each movie and of
 ## each season, puts each in the store's section that best fits (data/genres.json), sorts them by section then title.
 ## It's the autoload `Library`, and it goes first: the store's laid out to fit (store.gd plan(): how deep it has to
-## be, Level.dz) before the store's scene opens. Covers come as they're needed, cached in user://covers.
+## be, Level.dz) before the store's scene opens. Covers come as they're needed, cached in user://covers720.
 ## --demo[=N] goes straight to a made-up library of N films (and series besides).
 
 signal chosen(what: String)  # the settings form: "connect" or "demo"
@@ -18,6 +18,7 @@ var status := ""
 var demo := false
 var items: Array = []  # a tape each: { id, cover (item ids to try for its picture), t, sort, c (section), kind (movie / series), year, e (episodes, as video.gd plays them) }
 var plan := {}  # where everything goes (store.gd plan())
+var _first := 0  # a box's back being fetched: the shelf's covers wait for it (the one you're looking at goes first)
 
 
 func _ready() -> void:
@@ -144,6 +145,7 @@ func _open() -> void:  # the store, laid out round the library, opens
 
 func _fetch(path: String):  # the parsed reply, or null (and the status says why)
 	var http := HTTPRequest.new()
+	http.use_threads = true  # (off the main thread: on it, each request waited on the frame)
 	add_child(http)
 	http.request(url + path, _auth())
 	var r: Array = await http.request_completed
@@ -216,7 +218,7 @@ func stream_url(id: String) -> String:  # the file as it is: ffmpeg does the res
 
 
 func cover_path(ids: Array) -> String:  # where a tape's cover is kept once it's come
-	return "user://covers/%s.jpg" % ids[0]
+	return "user://covers720/%s.jpg" % ids[0]  # (720 tall: sharp held up close; the shelf takes a smaller copy)
 
 
 func cover(ids: Array) -> Image:  # a tape's cover: the first of its ids Jellyfin has a picture for (a season's own, else its series'); null if none
@@ -226,17 +228,69 @@ func cover(ids: Array) -> Image:  # a tape's cover: the first of its ids Jellyfi
 	if demo or url.is_empty():
 		return null
 	for id: String in ids:
+		while _first > 0:
+			await get_tree().process_frame
 		var http := HTTPRequest.new()
+		http.use_threads = true  # (off the main thread: on it, each request waited on the frame)
 		add_child(http)
-		http.request("%s/Items/%s/Images/Primary?maxHeight=360&format=Jpg&quality=85" % [url, id], _auth())
+		http.request("%s/Items/%s/Images/Primary?maxHeight=720&format=Jpg&quality=88" % [url, id], _auth())
 		var r: Array = await http.request_completed
 		http.queue_free()
 		var img := Image.new()
 		if r[0] == HTTPRequest.RESULT_SUCCESS and r[1] == 200 and img.load_jpg_from_buffer(r[3]) == OK:
-			DirAccess.make_dir_recursive_absolute("user://covers")
+			DirAccess.make_dir_recursive_absolute("user://covers720")
 			FileAccess.open(path, FileAccess.WRITE).store_buffer(r[3])
 			return img
 	return null  # ponytail: asked again every start; remember the misses if a big library's start drags
+
+
+const DETAIL_FIELDS := "Overview,People,Genres,Taglines,Studios,OfficialRating,CommunityRating,CriticRating,ProductionYear,RunTimeTicks,ImageTags,BackdropImageTags"
+
+
+func details(t: Dictionary) -> Dictionary:  # what the back of a tape's box says (backbox.gd): a movie's own, a season's with its series' filling the gaps; {} in the demo or if it can't be had
+	if demo or url.is_empty():
+		return {}
+	_first += 1
+	var r = await _fetch("/Items?Ids=%s&Fields=%s" % [",".join(t.cover), DETAIL_FIELDS])  # (a season's cover ids: itself, then its series)
+	_first -= 1
+	if r == null or r.Items.is_empty():
+		return {}
+	var by := {}
+	for it: Dictionary in r.Items:
+		by[it.Id] = it
+	var own: Dictionary = by.get(t.cover[0], r.Items[0])
+	var top: Dictionary = by.get(t.cover[-1], own)  # (a movie: itself)
+	var pick := func(k: String, empty: Variant) -> Variant: return own[k] if own.get(k) and own[k] != empty else top.get(k, empty)
+	var people: Array = pick.call("People", [])
+	return {
+		"title": top.get("Name", t.t), "season": own.get("Name", "") if own != top else "", "year": own.get("ProductionYear", top.get("ProductionYear", 0)),
+		"rating": top.get("OfficialRating", ""), "stars": top.get("CommunityRating", 0.0), "critics": top.get("CriticRating", 0),
+		"minutes": roundi(own.get("RunTimeTicks", 0) / 600000000.0), "tagline": (pick.call("Taglines", []) + [""])[0], "overview": pick.call("Overview", ""),
+		"genres": top.get("Genres", []), "studios": top.get("Studios", []).map(func(s: Dictionary) -> String: return s.Name),
+		"people": people.map(func(p: Dictionary) -> Dictionary: return { "id": p.Id, "name": p.Name, "role": p.get("Role", ""), "type": p.Type, "img": p.has("PrimaryImageTag") }),
+		"backdrop": own.Id if own.get("BackdropImageTags", []).size() else top.Id if top.get("BackdropImageTags", []).size() else "",
+		"logo": top.Id if top.get("ImageTags", {}).has("Logo") else "",
+	}
+
+
+func image(id: String, kind: String, max_w: int) -> Image:  # any picture Jellyfin has (a backdrop, a logo, a face), cached in user://art; null if none
+	var path := "user://art/%s_%s_%d.%s" % [id, kind, max_w, "png" if kind == "Logo" else "jpg"]  # (logos keep their see-through)
+	if FileAccess.file_exists(path):
+		return Image.load_from_file(path)
+	if demo or url.is_empty() or id.is_empty():
+		return null
+	var http := HTTPRequest.new()
+	http.use_threads = true  # (off the main thread: on it, each request waited on the frame)
+	add_child(http)
+	http.request("%s/Items/%s/Images/%s?maxWidth=%d&format=%s&quality=85" % [url, id, kind, max_w, "Png" if kind == "Logo" else "Jpg"], _auth())
+	var r: Array = await http.request_completed
+	http.queue_free()
+	var img := Image.new()
+	if r[0] != HTTPRequest.RESULT_SUCCESS or r[1] != 200 or (img.load_png_from_buffer(r[3]) if kind == "Logo" else img.load_jpg_from_buffer(r[3])) != OK:
+		return null
+	DirAccess.make_dir_recursive_absolute("user://art")
+	FileAccess.open(path, FileAccess.WRITE).store_buffer(r[3])
+	return img
 
 
 static func demo_library(n: int) -> Dictionary:  # Jellyfin-shaped: n movies, and a series for every fifth, each with a few seasons

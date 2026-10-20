@@ -22,7 +22,8 @@ folder, `jellyfin.cfg`). F2 in the store asks again. Or pick the made-up library
 | WASD, mouse, Shift, Space, C | Walk, look, run, jump, crouch |
 | Click | A tape off the shelf, held up to look at; again: in your hand; on its empty slot: back it goes. Right-click: put it back |
 | 1-9, wheel | Which of the tapes you're carrying is in your hand |
-| E | Doors, seats, light switches, lamps, ladders; at the theater's screen, the tape in your hand goes in (again: out) |
+| E | Doors, seats, light switches, lamps, ladders; at the theater's screen or the lounge TV, the tape in your hand goes in (again: out) |
+| R | Turn the tape in your hand over: the back of the box, from Jellyfin (the blurb, the cast, the credits); again: the front |
 | [ ] / , . | Wind back / on 30 s; the episode before / after |
 | L / F / M / J | Skip an hour / fly / mute / fold the log |
 | F2 | The server settings |
@@ -43,6 +44,7 @@ movie's a new release, out on the walls. Edit it to taste.
 | `store.gd` | The shelves: the layout (walls, kids, centre), the gondolas, the signs; how deep the store has to be |
 | `level.gd` | The level made that deep (autoload `Level`): what's past the lounge slides back, what crosses stretches |
 | `tapes.gd` | Tapes on and off the shelves, in hand, into the theater's projector |
+| `backbox.gd` | The back of a tape's box: Jellyfin's details laid out like a rental's, drawn once into a texture |
 | `video.gd` | Plays a Jellyfin item through ffmpeg onto the screens |
 | `world/world.scn`, `data/interact.json` | VaultBuster's level and where everything in it is |
 | the rest | The player, doors, lights, the sky and weather, sound: VaultBuster's |

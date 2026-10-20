@@ -7,15 +7,16 @@ extends Node
 ## E at the theater's screen or the lounge's TV: the tape in hand goes in and plays there (and on the other screens, and
 ## the CRTs hung over the aisles); E again: out it comes.
 ## Up to 9 carried; 1-9 or the wheel picks which is in hand. [ ] wind 30 s, , . the episode before / after.
+## R: turn the tape in hand over (held up, close), to read the back of its box (backbox.gd); R again: the front.
 ##
 ## The shelves' tapes are drawn a chunk of CHUNK at a time (a MultiMesh each), their covers layers of a texture array,
-## filled in as Jellyfin's covers arrive (cached in user://covers, see Library.gd). Till then: the section's colour.
+## filled in as Jellyfin's covers arrive (cached in user://covers720, see Library.gd). Till then: the section's colour.
 
 const REACH := 3.4
 const INV_MAX := 9
 const CELL := 0.25
 const CHUNK := 1024  # tapes per draw call (and per texture array)
-const COVER := Vector2i(64, 96)  # a cover on the shelf. ponytail: uncompressed RGB, ~24 MB a chunk; VRAM-compress them if a big library runs short
+const COVER := Vector2i(128, 192)  # a cover on the shelf. ponytail: uncompressed RGB, ~100 MB a chunk; VRAM-compress them if a big library runs short
 const WORKERS := 6  # covers fetching at once
 const YELLOW := Color(1, 0.831, 0)
 const SHADER := """
@@ -37,7 +38,8 @@ void fragment() {
 }
 """
 var HAND := Transform3D(Basis.from_euler(Vector3(0.05, -0.4, 0.06)), Vector3(0.3, -0.28, -0.55))  # carried
-var LOOK := Transform3D(Basis.IDENTITY, Vector3(0, 0, -0.34))  # held up, cover to you
+var LOOK := Transform3D(Basis.IDENTITY, Vector3(0, 0, -0.22))  # held up, cover to you: about 60% of the screen's height (fov 70)
+var LOOK_BACK := Transform3D(Basis(Vector3.UP, PI), Vector3(0, 0, -0.165))  # turned over, closer: the small print, the box about 85% of the screen's height
 
 var size: Vector3 = preload("res://store.gd").TAPE
 var tapes: Array = []
@@ -45,6 +47,7 @@ var screens: Array = []
 var hovered = null  # the tape the crosshair's on
 var held = null
 var inspecting := false  # held up in view (true) or carried (false)
+var flipped := false  # held up, back to you
 var peek = null  # the tape you've only just picked up to look at: right-click still puts it back
 var aim_slot := false
 var aim_tv = null  # the screen the crosshair's on
@@ -56,10 +59,15 @@ var _grid := {}  # cell -> [tape index]
 var _chunks: Array = []  # { mm: MultiMesh, tex: Texture2DArray }
 var _hand := Node3D.new()
 var _hand_cover := MeshInstance3D.new()
+var _hand_back := MeshInstance3D.new()
+var _backs: Node = preload("res://backbox.gd").new()
+var _dwell := { "on": null, "t": 0.0 }  # the tape the crosshair's settled on, and how long: past DWELL, its back starts drawing
+const DWELL := 0.25
 var _box := MeshInstance3D.new()
 var _quads: Array[MeshInstance3D] = []
 var _next_cover := 0
 var _gen := 0  # which stocking the cover workers are filling (a restock leaves the old ones to give up)
+var _shrinking := {}  # covers being loaded and shrunk (WorkerThreadPool tasks): seen through before the game closes
 
 @onready var player: CharacterBody3D = $"../Player"
 @onready var cam: Camera3D = $"../Player/Camera"
@@ -83,6 +91,14 @@ func _ready() -> void:
 	_hand_cover.position.z = size.z / 2.0 + 0.001
 	_hand_cover.material_override = StandardMaterial3D.new()
 	_hand.add_child(_hand_cover)
+	_hand_back.mesh = _hand_cover.mesh
+	_hand_back.transform = Transform3D(Basis(Vector3.UP, PI), Vector3(0, 0, -size.z / 2.0 - 0.001))
+	var bm := StandardMaterial3D.new()
+	bm.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC  # (read up close and at an angle: crisp)
+	bm.albedo_color = Color(0.12, 0.12, 0.14)
+	_hand_back.material_override = bm
+	_hand.add_child(_hand_back)
+	add_child(_backs)
 	_hand.visible = false
 	_saver_build()
 	video.started.connect(_on_started)
@@ -168,22 +184,38 @@ func stock(store: Node) -> void:  # the store's tapes onto its shelves (store.gd
 		_cover_worker(_gen)
 
 
+func _exit_tree() -> void:
+	_gen += 1  # (the workers stop)
+	for task: int in _shrinking:
+		WorkerThreadPool.wait_for_task_completion(task)
+	_shrinking.clear()
+
+
 func _cover_worker(gen: int) -> void:  # covers onto the shelf, the next one not yet asked for, till they're all done
 	var n := 0
 	while gen == _gen and _next_cover < tapes.size():
 		var t: Dictionary = tapes[_next_cover]
 		_next_cover += 1
-		var img: Image = await Library.cover(t.cover)
+		var path: String = Library.cover_path(t.cover)
+		var img: Image = null if FileAccess.file_exists(path) else await Library.cover(t.cover)  # (fetched if it isn't kept yet)
+		var shelf := [img]
+		var task := WorkerThreadPool.add_task(func() -> void:  # loading and shrinking it, off the main thread: 1600-odd of them would stall the first seconds
+			var im: Image = shelf[0] if shelf[0] != null else Image.load_from_file(path) if FileAccess.file_exists(path) else null
+			if im != null:
+				im.resize(COVER.x, COVER.y, Image.INTERPOLATE_LANCZOS)  # (720 tall down to the shelf's: Lanczos, so it stays sharp)
+				im.convert(Image.FORMAT_RGB8)
+				im.generate_mipmaps()
+			shelf[0] = im)
+		_shrinking[task] = true
+		while not WorkerThreadPool.is_task_completed(task):
+			await get_tree().process_frame
+		_shrinking.erase(task)
+		WorkerThreadPool.wait_for_task_completion(task)
 		if gen != _gen:
 			return
-		if img != null:
-			img.resize(COVER.x, COVER.y, Image.INTERPOLATE_BILINEAR)
-			img.convert(Image.FORMAT_RGB8)
-			img.generate_mipmaps()
-			_chunks[t.i / CHUNK].tex.update_layer(img, t.i % CHUNK)
+		if shelf[0] != null:
+			_chunks[t.i / CHUNK].tex.update_layer(shelf[0], t.i % CHUNK)
 		n += 1
-		if n % 16 == 0:
-			await get_tree().process_frame  # (cached ones come back at once: a few a frame, not all of them in one)
 
 
 # ---- nothing playing: the bouncing logo on the TV (VaultBuster's, from the web game's lounge.js)
@@ -312,6 +344,7 @@ func inv_make_room() -> bool:  # before picking something new up: stash what's i
 func inv_stash() -> void:  # what's in hand, out of it (still carried)
 	held = null
 	inspecting = false
+	flipped = false
 	peek = null  # swapping away from a tape counts as taking it
 	_hand.visible = false
 	inv_sel = -1
@@ -344,17 +377,30 @@ func _gone() -> void:  # what was in hand has left it (shelved, into the VCR): t
 func show_tape(t: Dictionary) -> void:  # the tape in your hand, its cover full size (from the cache, if it's come)
 	held = t
 	inspecting = false
+	flipped = false
 	var m: StandardMaterial3D = _hand_cover.material_override
 	var path: String = Library.cover_path(t.cover)
 	m.albedo_texture = ImageTexture.create_from_image(Image.load_from_file(path)) if FileAccess.file_exists(path) else null
 	m.albedo_color = Color.WHITE if m.albedo_texture != null else Color(0.3, 0.3, 0.35)
 	_hand.transform = HAND
 	_hand.visible = true
+	_show_back(t)
+
+
+func _show_back(t: Dictionary) -> void:  # the back of the box, once it's drawn (asked as soon as it's in hand, so it's there when it's turned over)
+	var m: StandardMaterial3D = _hand_back.material_override
+	m.albedo_texture = null
+	m.albedo_color = Color(0.12, 0.12, 0.14)
+	var tex: Texture2D = await _backs.build(t)
+	if held == t and tex != null:
+		m.albedo_texture = tex
+		m.albedo_color = Color.WHITE
 
 
 func release() -> void:  # clears the hand without touching the shelf (into the VCR)
 	held = null
 	inspecting = false
+	flipped = false
 	peek = null
 	_hand.visible = false
 	_gone()
@@ -374,8 +420,14 @@ func put_back() -> void:  # back into its own shelf slot
 
 func _process(dt: float) -> void:
 	_saver_tick(dt)
+	if hovered != _dwell.on:
+		_dwell = { "on": hovered, "t": 0.0 }
+	elif hovered != null and _dwell.t < DWELL:
+		_dwell.t += dt
+		if _dwell.t >= DWELL:
+			_backs.build(hovered)  # (not waited on: it's ready, or nearly, by the time it's picked up and turned over)
 	if held != null:
-		_hand.transform = _hand.transform.interpolate_with(LOOK if inspecting else HAND, minf(1.0, dt * 14.0))
+		_hand.transform = _hand.transform.interpolate_with((LOOK_BACK if flipped else LOOK) if inspecting else HAND, minf(1.0, dt * 14.0))
 	hud.inventory(inv.map(func(e: Dictionary) -> Dictionary: return { "name": e.t, "used": wind_frac(e) }), inv_sel)
 	hud.now_playing("%s%s\n%s%s%s   [ ] wind · , . episode" % ["❚❚ " if video.paused else "▶ ", playing.tape.t, "%d of %d · " % [playing.idx + 1, playing.tape.e.size()] if playing.tape.e.size() > 1 else "", _clock(video.position), " / " + _clock(video.duration) if video.duration > 0.0 else ""] if playing != null and not video.url.is_empty() else "")
 	if playing != null and not video.url.is_empty():  # the tape winds forward as it plays
@@ -413,6 +465,10 @@ func _unhandled_input(e: InputEvent) -> void:
 			KEY_PERIOD:
 				if not e.echo:
 					step_episode(1)
+	if e is InputEventKey and e.pressed and not e.echo and e.physical_keycode == KEY_R and held != null and player.seat == null:  # turn it over (held up first, if it was only carried)
+		flipped = not flipped or not inspecting
+		inspecting = true
+		return
 	if e is InputEventKey and e.pressed and not e.echo and e.physical_keycode >= KEY_1 and e.physical_keycode <= KEY_9:
 		inv_select(e.physical_keycode - KEY_1)
 		return
@@ -427,6 +483,7 @@ func _unhandled_input(e: InputEvent) -> void:
 	elif e.button_index == MOUSE_BUTTON_LEFT:
 		if held != null and inspecting:  # tuck the held-up tape back in hand (it's yours now)
 			inspecting = false
+			flipped = false
 			peek = null
 		elif aim_slot:  # slotted back into its own spot on the shelf
 			put_back()
@@ -451,7 +508,7 @@ func clear_aim() -> void:
 func aim(from: Vector3, dir: Vector3, hit: Dictionary, hit_d: float) -> String:
 	clear_aim()
 	if held != null and inspecting:
-		return "%s\n%s\nClick — keep it · Right-click — put it back" % [held.t, held.c]
+		return "" if flipped else "%s\n%s\nClick — keep it · Right-click — put it back · R — turn it over" % [held.t, held.c]
 	if held != null and held.off:  # its own empty slot: within 8 cm of the middle of it, nothing solid in front
 		var at: Vector3 = held.xf.origin - from
 		var t := at.dot(dir)

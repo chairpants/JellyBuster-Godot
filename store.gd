@@ -268,13 +268,13 @@ func _wedge(spec: Dictionary) -> ArrayMesh:  # an end panel: the gondola's side,
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	st.set_smooth_group(-1)
 	var v := func(i: int, z: float) -> Vector3: return Vector3(p[i].x, p[i].y, z)
-	for f: Array in [[0, 1, 2, 0.025], [0, 2, 3, 0.025], [0, 2, 1, -0.025], [0, 3, 2, -0.025]]:  # the two faces
+	for f: Array in [[0, 2, 1, 0.025], [0, 3, 2, 0.025], [0, 1, 2, -0.025], [0, 2, 3, -0.025]]:  # the two faces (clockwise from outside, Godot's front: else the far face shows through, fighting the shelves' ends)
 		for i in 3:
 			st.add_vertex(v.call(f[i], f[3]))
 	for i in 4:  # round the edge
 		var a: int = i
 		var b: int = (i + 1) % 4
-		for q: Array in [[a, 0.025], [b, 0.025], [b, -0.025], [a, 0.025], [b, -0.025], [a, -0.025]]:
+		for q: Array in [[a, 0.025], [b, -0.025], [b, 0.025], [a, 0.025], [a, -0.025], [b, -0.025]]:
 			st.add_vertex(v.call(q[0], q[1]))
 	st.generate_normals()
 	st.index()  # (merged into the shelving with the boxes, which are indexed: unindexed, its triangles were dropped)
