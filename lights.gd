@@ -22,6 +22,7 @@ var lamps: Array = []
 
 var _warm := {}  # zone -> { t, duration, schedules } while its tubes restrike
 var _windows: Array[SpotLight3D] = []  # daylight (or the night) in through the storefront glass
+var _spills: Array[SpotLight3D] = []  # the store's light, out through it
 var _glows: Array[Light3D] = []  # the screens: lit with the colour of what's on them
 var _glow := Color.BLACK
 var _beam: SpotLight3D  # the projector's: from the booth's port to the screen, a shaft in the haze the colour of the picture, heavily averaged
@@ -50,6 +51,7 @@ const PORT := [-1.42, 2.25, 33.17]  # the projection booth's port, over the back
 const BEAM := { "angle": 15.0, "energy": 0.4, "fog": 3.0, "follow": 1.2, "clear": 2.5 }  # wide enough for the screen's corners; barely lights what it lands on, but shows in the haze; follow: how fast its colour chases the picture's (slow: an average); clear: the haze-free stretch before the screen
 const PANEL_ON := Color(1.31, 1.33, 1.35)  # 0xf8fbff, and brighter than white: a lit panel blooms (room.gd)
 const SPILL := 0.55  # light through a doorway, for a fully lit room next to a dark one
+const SPILL_OUT := { "energy": 1.6, "range": 9.0 }  # the lit store's light out onto the sidewalk and the lot, at full dark
 const ZONE_K := { "closet": 0.8, "theater": 0.3 }  # how bright a room is with its light on, next to the rest (room.gd's shader)
 const ZONE_TINT := { "closet": Color(1.0, 0.85, 0.66), "lobby": Color(1.0, 0.86, 0.74), "theater": Color(1.0, 0.71, 0.48) }
 const PANEL_COLD := Color(0.188, 0.204, 0.239)  # 0x30343d: between stutters
@@ -139,6 +141,19 @@ func _ready() -> void:
 		w.light_volumetric_fog_energy = 0.5  # (shafts in from the storefront)
 		add_child(w)
 		_windows.append(w)
+		var s := SpotLight3D.new()  # and the other way: the store's own light out through the glass, onto the sidewalk after dark (from just outside it: the glass would shadow it)
+		s.position = Vector3(w.position.x, 2.5, -0.3)
+		s.basis = Basis.looking_at(Vector3(0, -0.8, -1).normalized())
+		s.spot_range = SPILL_OUT.range
+		s.spot_angle = 62.0
+		s.spot_attenuation = 1.5
+		s.light_specular = 0.0
+		s.light_color = Color(0.93, 0.96, 1.0)
+		s.shadow_enabled = true
+		s.light_volumetric_fog_energy = 0.4
+		s.visible = false
+		add_child(s)
+		_spills.append(s)
 	for sc: Dictionary in all.screens:  # the TV and the theater's screen: out into the room they face, with shadows
 		var g := SpotLight3D.new()
 		var dir := Vector3(sin(sc.ry), 0, cos(sc.ry))
@@ -346,6 +361,10 @@ func _process(dt: float) -> void:  # fluorescents restriking, tube by tube (ligh
 	for w in _windows:
 		w.light_color = Color(day.x, day.y, day.z).linear_to_srgb()
 		w.light_energy = DAYLIGHT
+	var out: float = SPILL_OUT.energy * zone_lvl.front * clampf((0.6 - sky.level) / 0.4, 0.0, 1.0)  # (only once it's darker out there than in here)
+	for s in _spills:
+		s.light_energy = out
+		s.visible = out > 0.01
 	if _bulb:
 		_bulb.albedo_color = BULB_ON if zone_on.closet else BULB_OFF
 	for z: Dictionary in _zoned:

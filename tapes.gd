@@ -104,6 +104,8 @@ func _ready() -> void:
 	bm.albedo_color = Color(0.12, 0.12, 0.14)
 	_hand_back.material_override = bm
 	_hand.add_child(_hand_back)
+	for mi: MeshInstance3D in [body, _hand_cover, _hand_back]:
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF  # (it moves with you: a shadow from it, and every light near you would draw its shadows again each frame)
 	add_child(_backs)
 	_hand.visible = false
 	_saver_build()
