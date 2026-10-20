@@ -16,7 +16,7 @@ signal started  # the first frame's up
 signal ended
 signal failed(why: String)
 
-const RES := Vector2i(528, 352)  # 3:2, the shape of the web game's screens. Raw frames, so this is the disk-bandwidth knob
+const RES := Vector2i(1080, 720)  # 3:2, the shape of the web game's screens. Raw frames, so this is the disk-bandwidth knob (~56 MB/s at 24 fps; the ring of chunks ~3.4 GB in user://)
 const MAX_FPS := 60.0  # the source's own frame rate, up to this (ffprobe asks the file first); raw frames, so it's disk bandwidth too
 const FALLBACK_FPS := 24.0  # when ffprobe can't say
 const FRAME_BYTES := RES.x * RES.y * 3  # rgb24
@@ -27,6 +27,7 @@ const RING := 6  # chunk files; must exceed WORKERS + QUEUE_MAX + the one playin
 
 var texture := ImageTexture.create_from_image(Image.create_empty(RES.x, RES.y, false, Image.FORMAT_RGB8))
 var audio := AudioStreamPlayer3D.new()  # the sound, from the screen it's playing on (tapes.gd puts it there)
+var content := Rect2(Vector2.ZERO, RES)  # where the film itself sits in the frame (the rest: the black it's padded with); full screen shows just this
 var url := ""  # what's playing ("" when nothing is)
 var position := 0.0  # seconds into it
 var duration := 0.0  # 0 when Jellyfin doesn't say
@@ -52,7 +53,7 @@ func _ready() -> void:
 	add_child(audio)
 	audio.position = Vector3.ZERO  # (the TV's, once a tape goes in: tapes.gd)
 	audio.unit_size = 3.0
-	audio.max_db = 3.0
+	audio.max_db = 6.0
 	_has_ffmpeg = OS.execute("ffmpeg", ["-version"], []) == 0
 
 
@@ -75,9 +76,10 @@ func play_url(u: String, at := 0.0) -> void:
 	position = _src_pos
 	paused = false
 	_shown = 0
-	fps = _fps_of.get(u, 0.0)
+	fps = _fps_of.get(u, [0.0])[0]
+	content = _fps_of.get(u, [0.0, Rect2(Vector2.ZERO, RES)])[1]
 	if fps == 0.0:
-		var p := OS.execute_with_pipe("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=avg_frame_rate,r_frame_rate", "-of", "csv=p=0", url])
+		var p := OS.execute_with_pipe("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=avg_frame_rate,r_frame_rate,width,height,sample_aspect_ratio", "-of", "default=nw=1", url])
 		if p.is_empty():
 			fps = FALLBACK_FPS
 		else:
@@ -129,8 +131,15 @@ func _process(dt: float) -> void:
 	if fps == 0.0:  # the frame rate first: every chunk's made at it
 		if OS.is_process_running(_probe.pid):
 			return
-		fps = _rate(_probe.stdio.get_line())
-		_fps_of[url] = fps
+		var said := {}
+		while true:  # (key=value lines, till they stop)
+			var kv: PackedStringArray = _probe.stdio.get_line().strip_edges().split("=")
+			if kv.size() != 2:
+				break
+			said[kv[0]] = kv[1]
+		fps = _rate("%s,%s" % [said.get("avg_frame_rate", ""), said.get("r_frame_rate", "")])
+		content = _fit(said)
+		_fps_of[url] = [fps, content]
 		_probe = {}
 	# keep the queue stocked: ffmpeg fetches faster than it plays, so the next chunk's landed before this one runs out.
 	# Workers finish out of order, so only the oldest is released: that keeps the queue in order
@@ -171,9 +180,9 @@ func _start_chunk() -> bool:
 		"-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5",
 		"-ss", str(_src_pos), "-t", str(CHUNK_SEC), "-i", url,  # -t before -i bounds the input, so it covers both outputs
 		# fitted inside the frame at its own shape, black round it (never stretched)
-		"-vf", "scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,fps=%s" % [RES.x, RES.y, RES.x, RES.y, fps],  # the picture: uncompressed rgb24, byte for byte what Image.FORMAT_RGB8 wants
+		"-vf", "scale=%d:%d:force_original_aspect_ratio=decrease:flags=lanczos,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,fps=%s" % [RES.x, RES.y, RES.x, RES.y, fps],  # the picture: uncompressed rgb24, byte for byte what Image.FORMAT_RGB8 wants
 		"-f", "rawvideo", "-pix_fmt", "rgb24", "-y", ProjectSettings.globalize_path(file),
-		"-vn", "-c:a", "libvorbis", "-q:a", "3", "-y", ProjectSettings.globalize_path(_ogg(_slot)),  # the sound: a second output of the same process
+		"-vn", "-ac", "2", "-c:a", "libvorbis", "-q:a", "3", "-y", ProjectSettings.globalize_path(_ogg(_slot)),  # the sound: a second output of the same process (surround mixed down to stereo)
 	])
 	if pid == -1:
 		_has_ffmpeg = false
@@ -184,6 +193,17 @@ func _start_chunk() -> bool:
 	_slot = (_slot + 1) % RING
 	_src_pos += CHUNK_SEC
 	return true
+
+
+static func _fit(said: Dictionary) -> Rect2:  # the film's own shape, fitted inside RES as ffmpeg's scale and pad put it (a pixel in from each edge: no black seam)
+	var w: float = said.get("width", "0").to_float()
+	var h: float = said.get("height", "0").to_float()
+	var sar := str(said.get("sample_aspect_ratio", "1:1")).split_floats(":")
+	if w <= 0.0 or h <= 0.0:
+		return Rect2(Vector2.ZERO, RES)
+	var shape := w / h * (sar[0] / sar[1] if sar.size() == 2 and sar[0] > 0.0 and sar[1] > 0.0 else 1.0)
+	var size := Vector2(RES.x, RES.x / shape) if shape > float(RES.x) / RES.y else Vector2(RES.y * shape, RES.y)
+	return Rect2((Vector2(RES) - size) / 2.0, size).grow(-1.0)
 
 
 static func _rate(line: String) -> float:  # ffprobe's "avg,r" (each "24000/1001"): the average if it has one, else the nominal

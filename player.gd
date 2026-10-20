@@ -109,7 +109,7 @@ func _on_a_screen() -> bool:  # a tape's playing, and you're looking at a screen
 
 func _full_screen(on: bool) -> void:
 	full = on
-	hud.full_screen(video.texture if on else null)
+	hud.full_screen(video.texture if on else null, video.content)
 
 
 func sit(s: Dictionary) -> void:  # looking the way the seat faces

@@ -692,7 +692,8 @@ func eject() -> void:
 
 
 func _speaker(theater: bool) -> void:  # a TV: a speaker in the room, fading off; the theater: the whole auditorium, as loud from any seat (ambience.gd's Theater bus does the room)
-	video.audio.unit_size = 8.0 if theater else 3.0  # (kept: the resume file tells them apart by it)
+	video.audio.unit_size = 8.0 if theater else 4.5  # (kept: the resume file tells them apart by it, over 5 the theater)
+	video.audio.panning_strength = 0.0 if theater else 1.0  # (the film's own stereo, left and right, wherever you sit: not swung round to the screen's side)
 	video.audio.attenuation_model = AudioStreamPlayer3D.ATTENUATION_DISABLED if theater else AudioStreamPlayer3D.ATTENUATION_INVERSE_DISTANCE
 	video.audio.attenuation_filter_db = 0.0 if theater else -24.0
 	video.audio.bus = "Theater" if theater else "Master"

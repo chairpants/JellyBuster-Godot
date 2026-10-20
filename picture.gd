@@ -5,7 +5,7 @@ extends CanvasLayer
 
 const ROWS := [  # [key, label, min, max, step] (no min: a toggle)
 	["brightness", "BRIGHTNESS", 50, 150, 5], ["contrast", "CONTRAST", 50, 150, 5], ["saturate", "COLOR", 0, 200, 5],
-	["hue", "TINT", 0, 360, 10], ["sharpen", "SHARPEN", 0, 100, 5], ["volume", "VOLUME", 0, 100, 5],
+	["hue", "TINT", 0, 360, 10], ["sharpen", "SHARPEN", 0, 100, 5], ["volume", "VOLUME", 0, 200, 5],
 	["bw", "B&W"], ["scanlines", "SCANLINES"], ["pixelated", "PIXELATED"],
 ]
 const DEFAULTS := { "brightness": 100, "contrast": 100, "saturate": 100, "hue": 0, "sharpen": 0, "volume": 100, "bw": false, "scanlines": false, "pixelated": false }

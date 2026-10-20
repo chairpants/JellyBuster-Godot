@@ -56,14 +56,16 @@ func _init() -> void:  # buses of its own: Store (so M can shut it all up); Room
 	var glass := AudioEffectLowPassFilter.new()
 	glass.cutoff_hz = GLASS_HZ
 	_bus("Outside", "Store", glass)
-	_bus("Theater", "Master", _verb(0.8, 0.45, 0.13, 35.0))
-	var eq := AudioEffectEQ6.new()  # (the subs: 32 and 100 Hz up; then squeezed and brought up, cinema-loud)
-	eq.set_band_gain_db(0, 8.0)
-	eq.set_band_gain_db(1, 5.0)
+	_bus("Theater", "Master", _verb(0.8, 0.45, 0.08, 35.0))
+	AudioServer.get_bus_effect(AudioServer.get_bus_index("Theater"), 0).hipass = 0.3  # (the room's tail without the bass in it: that was mud)
+	var eq := AudioEffectEQ6.new()  # (a little more low end and air; then squeezed and brought up, cinema-loud)
+	eq.set_band_gain_db(1, 4.0)
+	eq.set_band_gain_db(5, 2.0)
 	var squeeze := AudioEffectCompressor.new()
-	squeeze.threshold = -22.0
-	squeeze.ratio = 3.0
-	squeeze.gain = 9.0
+	squeeze.threshold = -24.0
+	squeeze.ratio = 2.5
+	squeeze.attack_us = 5000.0
+	squeeze.gain = 14.0  # (+4 dB on top: the film straight to both speakers, unpanned, lands about that much quieter)
 	var th := AudioServer.get_bus_index("Theater")
 	AudioServer.add_bus_effect(th, eq, 0)
 	AudioServer.add_bus_effect(th, squeeze, 1)

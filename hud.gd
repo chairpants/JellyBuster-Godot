@@ -132,8 +132,13 @@ func call_box(text: String) -> void:  # a decision waiting on you ("" clears it)
 	_call.text = text
 
 
-func full_screen(pic: Texture2D) -> void:  # null: back to the room
+func full_screen(pic: Texture2D, part := Rect2()) -> void:  # null: back to the room. part: just the film, not the black round it
 	_full.visible = pic != null
+	if pic != null and part.has_area():
+		var crop := AtlasTexture.new()
+		crop.atlas = pic
+		crop.region = part
+		pic = crop
 	_full_pic.texture = pic
 	if _full_pic.material == null:
 		_full_pic.material = $"../Picture".material(false)
