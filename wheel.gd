@@ -1,6 +1,7 @@
 extends CanvasLayer
-## The time and weather wheel (hold F, player.gd): a ring of choices round the middle of the screen, the mouse free to
-## point at one. Click one and it's so (the clock jumps to that hour; the weather's that, now), and the wheel's gone.
+## The time and weather wheel (hold F, player.gd): a ring of choices round the middle of the screen, the mouse moving a
+## pointer of its own round it (the real one stays captured: no window scaling or DPI between the hand and the pick), the
+## way it points what's picked. Click one and it's so (the clock jumps to that hour; the weather's that, now), and the wheel's gone.
 ## Right-click or Esc: gone, nothing changed.
 
 const OPTIONS := [  # [label, kind, value]
@@ -13,6 +14,7 @@ const SKY := { 8.0: Color("#f4a259"), 12.0: Color("#5aa9e6"), 16.0: Color("#e9c4
 
 var _ring := Control.new()
 var _hover := -1
+var _aim := Vector2.ZERO  # the pointer, from the middle (held to the ring's edge)
 
 
 func _ready() -> void:
@@ -27,25 +29,22 @@ func _ready() -> void:
 func open() -> void:
 	visible = true
 	_hover = -1
-	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	Input.warp_mouse(_ring.get_viewport_rect().size / 2.0)
+	_aim = Vector2.ZERO
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	_ring.queue_redraw()
 
 
 func close() -> void:
 	visible = false
-	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
 func _input(e: InputEvent) -> void:  # (before anything else gets it, while it's up)
 	if not visible:
 		return
 	if e is InputEventMouseMotion:
-		var off: Vector2 = e.position - _ring.get_viewport_rect().size / 2.0
-		var was := _hover
-		_hover = -1 if off.length() < R_IN or off.length() > R_OUT * 1.4 else int(posmod(off.angle() + PI / 2.0 + _step() / 2.0, TAU) / _step())
-		if _hover != was:
-			_ring.queue_redraw()
+		_aim = (_aim + e.relative).limit_length(R_OUT)
+		_hover = -1 if _aim.length() < R_IN * 0.5 else int(fposmod(_aim.angle() + PI / 2.0 + _step() / 2.0, TAU) / _step())  # (past a little dead zone, any distance out: the direction)
+		_ring.queue_redraw()
 	elif e is InputEventMouseButton and e.pressed:
 		if e.button_index == MOUSE_BUTTON_LEFT and _hover >= 0:
 			_pick(OPTIONS[_hover])
@@ -94,6 +93,8 @@ func _draw_ring() -> void:
 		var tw := font.get_string_size(o[0], HORIZONTAL_ALIGNMENT_CENTER, -1, 15).x
 		_ring.draw_string_outline(font, mid + Vector2(-tw / 2.0, 46), o[0], HORIZONTAL_ALIGNMENT_LEFT, -1, 15, 4, Color.BLACK)
 		_ring.draw_string(font, mid + Vector2(-tw / 2.0, 46), o[0], HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(1, 0.83, 0) if i == _hover else Color.WHITE)
+	_ring.draw_circle(c + _aim, 7.0, Color(1, 0.83, 0))
+	_ring.draw_arc(c + _aim, 7.0, 0, TAU, 16, Color.BLACK, 2.0, true)
 	var title := "TIME  ·  WEATHER"
 	var tw := font.get_string_size(title, HORIZONTAL_ALIGNMENT_CENTER, -1, 16).x
 	_ring.draw_string_outline(font, c + Vector2(-tw / 2.0, 6), title, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, 4, Color.BLACK)

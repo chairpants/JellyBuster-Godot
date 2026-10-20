@@ -25,25 +25,26 @@ vec3 place(vec3 q, float fall, vec2 drift, vec3 cam) {
 }
 
 bool indoors(vec3 p) {   // under the store's roof (its footprint, the closet's bump, the theater)
-	return p.y < 4.05 && ((p.x > -7.84 && p.x < 11.1 && p.z > -0.1 && p.z < 33.1) || (p.x > 11.1 && p.x < 12.7 && p.z > 27.9 && p.z < 29.9) || (p.x > -7.07 && p.x < 1.33 && p.z > 33.1 && p.z < 46.6));
+	return p.y < 4.05 && ((p.x > -7.84 && p.x < 11.1 && p.z > -0.1 && p.z < 33.1) || (p.x > 11.1 && p.x < 12.7 && p.z > 27.9 && p.z < 29.9) || (p.x > -7.07 && p.x < 1.33 && p.z > 33.1 && p.z < 46.6)) || p.y < 4.39 && p.x > 13.0 && p.x < 21.0 && p.z > 0.0 && p.z < 14.0;  // (and next door: sky.gd)
 }
 
 void vertex() {
 	float seed = UV.y;
 	vec3 cam = CAMERA_POSITION_WORLD;
 	vec3 p;
+	vec3 head;
 	BODY
 	vE = UV.x;
-	VERTEX = indoors(p) ? vec3(0.0, 0.0, 1000.0) : (VIEW_MATRIX * vec4(p, 1.0)).xyz;
+	VERTEX = indoors(head) ? vec3(0.0, 0.0, 1000.0) : (VIEW_MATRIX * vec4(p, 1.0)).xyz;  // (by the head, both ends: one end let through and the other flung behind you drew a line right across the view)
 }
 
 void fragment() {
 	FRAG
 }
 """
-const RAIN_BODY := "float sp = 9.0 + seed * 3.0; p = place(VERTEX, uT * sp, uDrift, cam); p += UV.x * 0.45 * vec3(-uWind.x / sp, 1.0, -uWind.y / sp);"  # the tail: where it was a moment ago, up and upwind
+const RAIN_BODY := "float sp = 9.0 + seed * 3.0; p = place(VERTEX, uT * sp, uDrift, cam); head = p; p += UV.x * 0.45 * vec3(-uWind.x / sp, 1.0, -uWind.y / sp);"  # the tail: where it was a moment ago, up and upwind
 const RAIN_FRAG := "ALBEDO = vec3(0.78, 0.82, 0.9) * (1.0 - 0.55 * uNight); ALPHA = (0.12 + 0.3 * vE) * uK;"
-const SNOW_BODY := "float t = uT * (0.7 + seed * 0.5); p = place(VERTEX, t, uDrift * (0.8 + seed * 0.4), cam); p.x += sin(t * 0.9 + seed * 40.0) * 0.35; p.z += cos(t * 0.7 + seed * 30.0) * 0.25; POINT_SIZE = clamp((2.0 + seed * 3.0) * 40.0 / max(0.1, distance(p, cam)), 1.0, 7.0);"
+const SNOW_BODY := "float t = uT * (0.7 + seed * 0.5); p = place(VERTEX, t, uDrift * (0.8 + seed * 0.4), cam); p.x += sin(t * 0.9 + seed * 40.0) * 0.35; p.z += cos(t * 0.7 + seed * 30.0) * 0.25; head = p; POINT_SIZE = clamp((2.0 + seed * 3.0) * 40.0 / max(0.1, distance(p, cam)), 1.0, 7.0);"
 const SNOW_FRAG := "ALBEDO = vec3(1.0 - 0.5 * uNight); ALPHA = (1.0 - smoothstep(0.2, 0.5, length(POINT_COORD - 0.5))) * 0.85 * uK;"
 const FAR := [4.0, -16.2, 68.0, 31.5, 12.0, 0.0, 0.0]  # centre x z, size x z, height, floor, carried with you?
 const NEAR := [0.0, 0.0, 26.0, 26.0, 9.5, -0.5, 1.0]
@@ -110,7 +111,7 @@ func _fall(n: int, lines: bool, box: Array) -> MeshInstance3D:
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_LINES if lines else Mesh.PRIMITIVE_POINTS, arrays)
 	var sh := Shader.new()
 	sh.code = FALL.replace("BODY", RAIN_BODY if lines else SNOW_BODY).replace("FRAG", RAIN_FRAG if lines else SNOW_FRAG)
-	for zv in ["27.9", "29.9", "33.1", "46.6"]:  # (the roofs' far ends, as deep as the store is: level.gd)
+	for zv in ["27.9", "29.9", "33.1", "46.6", "14.0"]:  # (the roofs' far ends, as deep as the store is: level.gd)
 		sh.code = sh.code.replace(zv, str(Level.z(zv.to_float())))
 	var m := ShaderMaterial.new()
 	m.shader = sh
