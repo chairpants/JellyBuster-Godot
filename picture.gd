@@ -11,7 +11,7 @@ const ROWS := [  # [key, label, min, max, step] (no min: a toggle)
 	["full", "FULL SCREEN"],  # (F11 too)
 	["#", "CONTROLS"], ["fov", "FIELD OF VIEW", 55, 100, 5], ["mouse", "MOUSE %", 25, 300, 5], ["invert", "INVERT Y"],
 ]
-const DEFAULTS := { "brightness": 100, "contrast": 100, "saturate": 100, "hue": 0, "sharpen": 0, "volume": 100, "bw": false, "scanlines": false, "pixelated": false, "fancy": true, "smooth": true, "scale": 100, "full": false, "fov": 70, "mouse": 100, "invert": false }
+const DEFAULTS := { "brightness": 100, "contrast": 100, "saturate": 100, "hue": 0, "sharpen": 0, "volume": 100, "bw": false, "scanlines": false, "pixelated": false, "fancy": true, "smooth": true, "scale": 100, "full": false, "fov": 60, "mouse": 100, "invert": false }
 const FILE := "user://picture.cfg"
 const PIC := """
 uniform float uFx = 1.0; uniform float uK = 1.0;

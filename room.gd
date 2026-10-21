@@ -31,6 +31,9 @@ global uniform vec4 uFloorBox;  // sales floor: x0, x1, back wall z, ceiling
 global uniform vec4 uBohBox;    // back of house: x0, x1, hall|rooms z, z1
 global uniform vec4 uLobbyBox;
 global uniform vec4 uThBox;     // auditorium: x0, x1, z0, z1
+global uniform sampler2D uPanels : filter_linear_mipmap, repeat_disable;   // the sales floor's ceiling panels from below (lights.gd's _panel_map)
+global uniform vec4 uPanelBox;  // where that map is: x0, z0, its width, its depth
+const float PANEL_REFLECT = 12.0;  // how bright a panel looks in a sleeve, the tile
 global uniform vec2 uZoneSplit;  // the sales floor's zones: front | aisles z, aisles | lounge z
 global uniform vec2 uBohSplit;  // break room | restroom x, ceiling
 global uniform vec2 uThLight;   // x = lobby switch, y = theater house-lights switch
@@ -52,6 +55,8 @@ uniform vec4 albedo : source_color = vec4(1.0);
 uniform float shine = 0.0;      // 0 matte; up to 1, a plastic sleeve: a glint of the real lights (ponytail: no SSR; tile and plastic give back a few percent, too faint to see over what it cost)
 uniform sampler2D tex : source_color, FILTER, repeat_enable;
 uniform bool use_tex = false;
+uniform vec3 tint = vec3(1.0);   // LOOK: the store's colours, put to rights (a wall's paint, the carpet worn grey)
+uniform float desat = 0.0;
 uniform bool use_vcol = false;
 uniform vec3 uv_scale = vec3(1.0);
 uniform vec3 uv_offset = vec3(0.0);
@@ -75,6 +80,7 @@ void fragment() {
 	vec4 a = albedo;
 	if (use_tex) a *= texture(tex, UV);
 	if (use_vcol) a.rgb *= COLOR.rgb;
+	a.rgb = mix(a.rgb, vec3(dot(a.rgb, vec3(0.3, 0.59, 0.11))), desat) * tint;
 	ALPHA_CODE
 	vec3 rN = normalize(wN) * (FRONT_FACING ? 1.0 : -1.0);
 	vec3 fl = mix(uInGround, uInSky, 0.5 * rN.y + 0.5) + uInAmb + uInDirC * max(dot(rN, uInDir), 0.0);   // one room's worth of fluorescents
@@ -116,6 +122,20 @@ void fragment() {
 	ROUGHNESS = 1.0 - 0.75 * shine;
 	SPECULAR = shine;
 	EMISSION = emission * (use_emission_tex ? texture(emission_tex, UV).rgb : vec3(1.0)) * (1.0 - vFog) + uFog.rgb * vFog;
+	if (shine > 0.0 && P.x > uFloorBox.x && P.x < uFloorBox.y && P.z > -0.05 && P.z < uFloorBox.z && P.y < uFloorBox.w) {
+		// the ceiling's panels in it: the view bounced off the surface, up to the ceiling, and whether there's a panel there
+		// (blurrier the further off, and the rougher); next to nothing head on, more the more glancing (Fresnel)
+		vec3 V = normalize(P - CAMERA_POSITION_WORLD);
+		vec3 R = reflect(V, rN);
+		if (R.y > 0.02) {
+			float t = (uFloorBox.w - P.y) / R.y;
+			vec2 hit = P.xz + R.xz * t;
+			float lit = textureLod(uPanels, (hit - uPanelBox.xy) / uPanelBox.zw, log2(1.0 + t * (1.0 - shine) * 3.0)).r;
+			float zone = hit.y < uZoneSplit.x ? uZone.x : (hit.y < uZoneSplit.y ? uZone.y : uZone.z);
+			float fr = 0.04 + 0.96 * pow(1.0 - clamp(dot(rN, -V), 0.0, 1.0), 5.0);
+			EMISSION += vec3(lit * zone * fr * shine * PANEL_REFLECT);
+		}
+	}
 }
 
 void light() {   // the real lights, on the surface's own colour (ALBEDO's already the room's light on it)
@@ -127,6 +147,22 @@ void light() {   // the real lights, on the surface's own colour (ALBEDO's alrea
 """
 
 const FLOOR_SHINE := { "vaultbuster_73.jpg": 0.6, "vaultbuster_0.jpg": 0.5 }  # the level's hard floors, by their pictures
+# a real store's colours, by the level's pictures or plain colours: [tint, how much of the colour out first]. The web game's
+# primaries read as a toy: walls painted a warm yellow, the carpet a worn blue-grey, the uprights navy
+const LOOK := { "e8ecf2": [Color("#e9c25c"), 0.0], "vaultbuster_43.jpg": [Color(1.2, 1.35, 1.6), 0.7], "1c4dbb": [Color("#5d79ab"), 0.35] }
+const GRADE := """
+shader_type canvas_item;
+render_mode blend_premul_alpha;
+uniform float vig = 0.3;     // the corners, this much darker
+uniform float grain = 0.03;  // and a film's grain over it all
+void fragment() {
+	float v = vig * smoothstep(0.3, 0.75, length(UV - 0.5));
+	float n = (fract(sin(dot(FRAGCOORD.xy + fract(TIME) * vec2(113.0, 71.0), vec2(12.9898, 78.233))) * 43758.5453) - 0.5) * 2.0 * grain;
+	float k = v + max(-n, 0.0);   // darker, lighter: mixed toward black and white by those much
+	float l = max(n, 0.0);
+	COLOR = vec4(vec3(l), k + l);
+}
+"""
 const TONE_EXPOSURE := 1.25  # AgX sits a little darker in the middle than the linear it replaced: this brings it back up
 
 var _shaders := {}
@@ -135,6 +171,7 @@ var _made := {}
 var _moon_dir := Vector3(-14, 26, -10).normalized()
 var _moon_c := Vector3.ZERO
 var _fancy := true
+var _grade := CanvasLayer.new()  # GRADE, over the picture
 
 @onready var sky: Node3D = $"../Sky"
 @onready var lights: Node = $"../Lights"
@@ -180,7 +217,7 @@ func _ready() -> void:  # the sun (or the moon) as a real light, and what the pi
 	env.tonemap_mode = Environment.TONE_MAPPER_AGX  # (the brights roll off instead of clipping flat: lit panels, the screens, the sun through the glass)
 	env.tonemap_exposure = TONE_EXPOSURE
 	env.adjustment_enabled = true
-	env.adjustment_saturation = 1.15  # (AgX greys colour a little on its way: the store's blues and the tapes' colours back)
+	env.adjustment_saturation = 1.0
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR  # (white, at 1: ALBEDO carries the room's light)
 	env.ambient_light_color = Color.WHITE
 	env.ambient_light_energy = 1.0
@@ -199,6 +236,17 @@ func _ready() -> void:  # the sun (or the moon) as a real light, and what the pi
 	env.volumetric_fog_ambient_inject = 0.0  # (only where a real light crosses the air)
 	env.volumetric_fog_gi_inject = 0.0
 	env.volumetric_fog_sky_affect = 0.0
+	_grade.layer = 0  # (under the HUD's words; below 0 the engine drew it over everything, white)
+	var rect := ColorRect.new()
+	rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var sh := Shader.new()  # (typed: rect.material.shader = ... didn't take, and drew it plain white)
+	sh.code = GRADE
+	var m := ShaderMaterial.new()
+	m.shader = sh
+	rect.material = m
+	_grade.add_child(rect)
+	add_child(_grade)
 	fancy(_fancy)
 
 
@@ -265,6 +313,10 @@ func _room_material(m: StandardMaterial3D, has_colors: bool) -> ShaderMaterial:
 	var out := ShaderMaterial.new()
 	out.shader = _shaders[code]
 	out.set_shader_parameter("albedo", m.albedo_color)
+	var look: Array = LOOK.get(m.albedo_texture.resource_path.get_file() if m.albedo_texture else m.albedo_color.to_html(false), [])
+	if look:
+		out.set_shader_parameter("tint", look[0])
+		out.set_shader_parameter("desat", look[1])
 	if m.albedo_texture != null:
 		out.set_shader_parameter("tex", m.albedo_texture)
 		out.set_shader_parameter("use_tex", true)
@@ -284,6 +336,7 @@ func _room_material(m: StandardMaterial3D, has_colors: bool) -> ShaderMaterial:
 
 
 func _process(_dt: float) -> void:  # applyLighting: the switches' levels and the day, into the materials
+	_grade.visible = not $"../HUD".is_full_screen()  # (a film full screen is the film's own picture)
 	var z: Dictionary = lights.zone_lvl
 	glob("uZone", Vector4(z.front, z.aisles, z.lounge, sky.level))
 	glob("uBoh", Vector4(z.hall, z.breakroom, z.restroom, z.closet))

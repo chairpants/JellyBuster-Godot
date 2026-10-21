@@ -28,6 +28,14 @@ window/size/viewport_height=720
 
 [shader_globals]
 
+uPanels={
+"type": "sampler2D",
+"value": ""
+}
+uPanelBox={
+"type": "vec4",
+"value": Vector4(0, 0, 1, 1)
+}
 uZone={
 "type": "vec4",
 "value": Vector4(1, 1, 1, 1)

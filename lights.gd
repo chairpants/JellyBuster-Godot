@@ -119,6 +119,7 @@ func _ready() -> void:
 	# of its own, to go dark with its zone's switch and stutter back on with it (the web game's panelMats)
 	for zone: String in zone_on:
 		_panels[zone] = []
+	var lit := []  # the sales floor's panels, for the map of them the sleeves see (_panel_map)
 	for mi: MeshInstance3D in $"../World".find_children("*", "MeshInstance3D", true, false):
 		if mi.mesh == null or mi.mesh.get_surface_count() != 1:
 			continue
@@ -137,6 +138,9 @@ func _ready() -> void:
 		mi.set_surface_override_material(0, own)
 		own.albedo_color = PANEL_ON if zone_on[zone] else PANEL_OFF
 		_panels[zone].append(own)
+		if zone in ["front", "aisles", "lounge"]:
+			lit.append(mi)
+	_panel_map(lit, d.boxes.floor)
 	var f: Array = d.boxes.floor  # the sales floor: x0, x1, back wall z, ceiling
 	for i in WINDOWS:  # along the glass, just inside it, shining back into the store: what's in the way throws a shadow
 		var w := SpotLight3D.new()
@@ -392,6 +396,28 @@ func flip_plate(zone: String) -> void:  # the whole plate at once: all on, unles
 	for z: String in plates[zone]:
 		if zone_on[z] != on:
 			set_zone(z, on)
+
+
+const PANEL_PX := 0.05  # m a pixel of the panel map
+
+
+func _panel_map(meshes: Array, f: Array) -> void:  # the sales floor's ceiling from below, white where there's a panel: what a sleeve, or the tile, gives back (room.gd's shader, by its reflection off them)
+	var img := Image.create(ceili((f[1] - f[0]) / PANEL_PX) + 2, ceili((f[2] + 0.05) / PANEL_PX) + 2, false, Image.FORMAT_L8)  # (a black pixel's border: off the map's edge, nothing)
+	for mi: MeshInstance3D in meshes:
+		var v: PackedVector3Array = mi.mesh.get_faces()
+		for i in range(0, v.size(), 3):  # each triangle's box: a panel's two make the panel
+			var a: Vector3 = mi.global_transform * v[i]
+			var b: Vector3 = mi.global_transform * v[i + 1]
+			var c: Vector3 = mi.global_transform * v[i + 2]
+			var x0 := int((minf(a.x, minf(b.x, c.x)) - f[0]) / PANEL_PX) + 1
+			var x1 := int((maxf(a.x, maxf(b.x, c.x)) - f[0]) / PANEL_PX) + 1
+			var z0 := int((minf(a.z, minf(b.z, c.z)) + 0.05) / PANEL_PX) + 1
+			var z1 := int((maxf(a.z, maxf(b.z, c.z)) + 0.05) / PANEL_PX) + 1
+			img.fill_rect(Rect2i(x0, z0, x1 - x0, z1 - z0).intersection(Rect2i(1, 1, img.get_width() - 2, img.get_height() - 2)), Color.WHITE)
+	img.generate_mipmaps()
+	var room := preload("res://room.gd")
+	room.glob("uPanels", ImageTexture.create_from_image(img))
+	room.glob("uPanelBox", Vector4(f[0] - PANEL_PX, -0.05 - PANEL_PX, img.get_width() * PANEL_PX, img.get_height() * PANEL_PX))  # (x0, z0, how wide, how deep)
 
 
 func zone_at(p: Vector3) -> String:  # which switch lights this spot ("" outdoors): the room shader's boxes
