@@ -211,7 +211,7 @@ func _aim() -> void:  # what the crosshair's on, and what E would do about it
 	aim_door = null
 	aim_seat = null
 	fixtures.aim = ""
-	if player.climb != null:
+	if player.climb != null or $"../POS".open:  # (at the register: nothing else to aim at)
 		tapes.clear_aim()
 		hud.tip("")
 		return

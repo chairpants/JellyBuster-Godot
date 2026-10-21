@@ -232,5 +232,5 @@ func _step_up(dt: float) -> void:  # walking into something low: up onto it (the
 		global_position = raised.origin + probe + landing.get_travel()
 
 
-func _key(k: Key) -> float:  # (not while typing: the cover search's box, covers.gd)
-	return 1.0 if Input.is_physical_key_pressed(k) and not get_viewport().gui_get_focus_owner() is LineEdit else 0.0
+func _key(k: Key) -> float:  # (not while typing: the cover search's box, covers.gd; the register, pos.gd)
+	return 1.0 if Input.is_physical_key_pressed(k) and not get_viewport().gui_get_focus_owner() is LineEdit and not $"../POS".open else 0.0

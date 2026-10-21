@@ -710,8 +710,9 @@ func _resume() -> void:  # what was in the VCR when the game last closed: off it
 
 
 func _scrub_tick(dt: float) -> void:  # rewind / fast-forward: held, the spot it'll pick up from runs back or on (faster the longer it's held), on the bar at the bottom; both let go, and a moment later it's there
-	var rew := Input.is_physical_key_pressed(KEY_COMMA)
-	var ff := Input.is_physical_key_pressed(KEY_PERIOD)
+	var typing: bool = $"../POS".open  # (, and . typed at the register aren't the VCR's)
+	var rew := Input.is_physical_key_pressed(KEY_COMMA) and not typing
+	var ff := Input.is_physical_key_pressed(KEY_PERIOD) and not typing
 	if playing == null or video.url.is_empty() or Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 		rew = false
 		ff = false

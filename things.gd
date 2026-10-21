@@ -245,6 +245,9 @@ func take_aim(from: Vector3, dir: Vector3, hit: Dictionary, hit_d: float) -> Str
 	if not hit:
 		return ""
 	var at: Vector3 = hit.position
+	if hit_d < 2.4 and at.distance_to(_v(T.register.pos)) < 0.55:  # the register's terminal (pos.gd)
+		aim = "register"
+		return "E — log in to the register"
 	if hit_d < 2.2:
 		if _stool and stool_by == null and Vector2(at.x - _stool_at().x, at.z - _stool_at().z).length() < 0.34 and at.y < _stool_at().y + 0.9:
 			aim = "stool"
@@ -312,6 +315,8 @@ func on_e() -> bool:
 			_angle = player.rotation.y
 			on_stool = true
 			player.sit({ "kind": "stool", "x": _stool_at().x, "y": _stool_at().y, "z": _stool_at().z, "ry": player.rotation.y - PI, "hipY": T.stool.SEAT + 0.05 })
+		"register":
+			$"../POS".log_in()
 		"cutout":
 			pass  # (a tap does nothing: it wants holding)
 		"cooler":

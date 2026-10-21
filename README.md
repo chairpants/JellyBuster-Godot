@@ -23,6 +23,7 @@ folder, `jellyfin.cfg`). F2 in the store asks again. Or pick the made-up library
 | Click | A tape off the shelf, held up to look at; again: in your hand; on its empty slot: back it goes. Right-click: put it back |
 | 1-9, wheel | Which of the tapes you're carrying is in your hand |
 | E | Doors, seats, light switches, lamps, ladders; at the theater's screen or the lounge TV, the tape in your hand goes in (again: out) |
+| E on the register | The store's terminal: search for a title or browse a section; on a title, S lights its slot on the shelf. Click to pick, right-click or Esc to go back |
 | R | Turn the tape in your hand over: the back of the box, from Jellyfin (the blurb, the cast, the credits); again: the front |
 | , . (held) / [ ] | Rewind / fast-forward (a bar shows where to; plays from there half a second after letting go); the episode before / after |
 | / | Pause the tape that's playing; again: play |
