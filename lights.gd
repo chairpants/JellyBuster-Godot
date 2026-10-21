@@ -117,7 +117,9 @@ func _ready() -> void:
 			continue
 		var m := mi.mesh.surface_get_material(0)
 		var box := mi.global_transform * mi.get_aabb()
-		if not m is StandardMaterial3D or m.shading_mode != BaseMaterial3D.SHADING_MODE_UNSHADED or m.albedo_color.v < 0.85 or m.albedo_color.s > 0.12:
+		if not m is StandardMaterial3D or m.shading_mode != BaseMaterial3D.SHADING_MODE_UNSHADED:
+			continue
+		if (m.albedo_color.v < 0.85 or m.albedo_color.s > 0.12) and Vector3(m.albedo_color.r - PANEL_OFF.r, m.albedo_color.g - PANEL_OFF.g, m.albedo_color.b - PANEL_OFF.b).length() > 0.005:  # (white; or off as the level was saved: the lobby's, its switch down)
 			continue
 		if box.size.y > 0.06 or box.position.y < 2.3:  # (a zone's panels are one mesh, or a few: flat, and up at the ceiling)
 			continue
