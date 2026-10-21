@@ -46,6 +46,10 @@ var _glass: AudioEffectLowPassFilter
 const FILM_THRESHOLD := -30.0  # the Film bus's squeeze (dB): louder than this is turned down by the ratio, then all of it brought up by the gain
 const FILM_RATIO := 4.0  # (20 dB louder in comes out 5 louder: lower the threshold or raise this for films more alike, at the cost of the bangs' punch)
 const FILM_GAIN := 10.0  # (dB: what the squeeze takes off a typical film's loud parts, given back to all of it)
+const FILM_HZ := 16000.0  # the film up close: all of it
+const WALL_HZ := 0.025  # each shut door between: what's left of the top end (one: ~450 Hz, the bass and the thump; a doorway wide open: ~5 kHz, muffled)
+const WALL_DB := -14.0  # and how much quieter, each (two rooms off, -28: next to nothing)
+var _walls := 0.0  # lights.gd's walls(), from the screen to your ear (eased)
 
 
 func _init() -> void:  # buses of its own: Store (so M can shut it all up); Room into it (a little of the room on the chime, steps and doors);
@@ -64,6 +68,9 @@ func _init() -> void:  # buses of its own: Store (so M can shut it all up); Room
 	level.release_ms = 1200.0  # (eases back over a second or so: the dialogue after an explosion isn't left ducked, and it doesn't pump)
 	_bus("Film", "Master", AudioEffectAmplify.new())  # first, the film's own trim: how far off TARGET_LUFS it's measured (video.gd rides it)
 	AudioServer.add_bus_effect(AudioServer.bus_count - 1, level)
+	var muffle := AudioEffectLowPassFilter.new()  # then, after the squeeze (so it can't bring them back up): the walls and the distance (_hear)
+	AudioServer.add_bus_effect(AudioServer.bus_count - 1, muffle)
+	AudioServer.add_bus_effect(AudioServer.bus_count - 1, AudioEffectAmplify.new())
 	var ceiling := AudioEffectHardLimiter.new()
 	ceiling.ceiling_db = -1.0
 	AudioServer.add_bus_effect(0, ceiling)
@@ -90,6 +97,63 @@ func _verb(size: float, damping: float, wet: float, predelay: float) -> AudioEff
 	verb.dry = 1.0
 	verb.predelay_msec = predelay
 	return verb
+
+
+func _hear(main: Node, lights: Node, dt: float) -> void:  # the film, as heard from where you are: quieter and duller the further from
+	# the screen, and through a doorway or a shut door only its low end, quietly; two rooms off, next to nothing. (Not the player's
+	# own falloff: that's before the Film bus's squeeze, which turned it back up. The player only pans it: video.gd)
+	var audio: AudioStreamPlayer3D = main.get_node("Video").audio
+	var ear: Vector3 = get_viewport().get_camera_3d().global_position
+	var best := -INF  # the film's on every screen: its sound from whichever you'd hear best (they're rooms apart: where one's loud the other's next to nothing)
+	var w := 0.0
+	for sc: Dictionary in main.get_node("Tapes").screens:
+		var at := Vector3(sc.x, sc.y, sc.z)
+		var u := 8.0 if sc.kind == "theater" else 3.0  # (clear out to here: tapes.gd's _speaker)
+		var sw: float = lights.walls(ear, at)
+		var db := 20.0 * log(u / maxf(ear.distance_to(at), u * 0.7)) / log(10.0) + WALL_DB * sw
+		if db > best:
+			best = db
+			w = sw
+			audio.position = at
+			audio.unit_size = u
+	var r := audio.unit_size
+	var near := r / maxf(ear.distance_to(audio.global_position), r * 0.7)
+	_walls = lerpf(_walls, w, minf(1.0, dt * 4.0))  # (eased: a door swinging, a step through it)
+	var bus := AudioServer.get_bus_index("Film")
+	var hz := clampf(FILM_HZ * pow(near, 1.2) * pow(WALL_HZ, _walls), 150.0, FILM_HZ)
+	AudioServer.set_bus_effect_enabled(bus, 2, hz < FILM_HZ * 0.9)  # (up close, in the room: no filter at all)
+	var muffle := AudioServer.get_bus_effect(bus, 2) as AudioEffectLowPassFilter
+	if absf(hz / muffle.cutoff_hz - 1.0) > 0.08:  # retuned in steps, not every frame: a filter swept nonstop can blow up, and the film's sound with it
+		muffle.cutoff_hz = hz
+	(AudioServer.get_bus_effect(bus, 3) as AudioEffectAmplify).volume_db = 20.0 * log(near) / log(10.0) + WALL_DB * _walls
+	_trace(main.get_node("Video"), audio, bus, hz, near, dt)
+
+
+var _quiet := 0.0  # seconds the film's been playing with nothing coming out of its bus
+var _log_t := 0.0
+var _hitch_t := 0.0
+
+
+func _trace(video: Node, audio: AudioStreamPlayer3D, bus: int, hz: float, near: float, dt: float) -> void:  # ponytail: the dropout hunt; delete once it's found
+	if video.url.is_empty() or video.paused:
+		_quiet = 0.0
+		return
+	var out := AudioServer.get_bus_peak_volume_left_db(bus, 0)
+	var line := "film: fps %d  dt %.0f ms  playing %s  at %.1f/%.1f s  out %.0f dB  trim %.1f  cutoff %.0f Hz (%s)  amp %.1f dB  walls %.2f  near %.2f" % [
+		Engine.get_frames_per_second(), dt * 1000.0, audio.playing, audio.get_playback_position(), audio.stream.get_length() if audio.stream else 0.0,
+		out, (AudioServer.get_bus_effect(bus, 0) as AudioEffectAmplify).volume_db, (AudioServer.get_bus_effect(bus, 2) as AudioEffectLowPassFilter).cutoff_hz,
+		"on" if AudioServer.is_bus_effect_enabled(bus, 2) else "off", (AudioServer.get_bus_effect(bus, 3) as AudioEffectAmplify).volume_db, _walls, near]
+	_quiet = _quiet + dt if out < -90.0 else 0.0
+	if _quiet > 0.5 and _quiet - dt <= 0.5:
+		push_warning("SILENT " + line)
+	_hitch_t -= dt
+	if dt > 0.05 and _hitch_t <= 0.0:  # (once a second at most: a warning a frame was making the hitches worse)
+		_hitch_t = 1.0
+		push_warning("HITCH " + line)
+	_log_t += dt
+	if _log_t >= 2.0:
+		_log_t = 0.0
+		print(line)
 
 
 func _ready() -> void:
@@ -299,6 +363,7 @@ func _process(dt: float) -> void:
 	var snow: float = weather.k if weather.kind == "snow" else 0.0
 	_out = move_toward(_out, 1.0 if outdoors or lights.zone_at(you) == "" else 0.0, dt * 1.5)  # out the door (or up on the roof): the road's no longer through the glass, and the store's own sounds are behind you
 	_glass.cutoff_hz = GLASS_HZ * pow(OPEN_HZ / GLASS_HZ, _out)
+	_hear(main, lights, dt)
 	var indoors := 1.0 - 0.8 * _out
 	for i in ZONES.size():
 		_level(_hums[i], lights.zone_lvl.get(ZONES[i][0], 0.0) * 0.0045 * indoors, dt, 12.0)  # follows the switch (and the flicker as it strikes)
@@ -433,6 +498,8 @@ func _bake() -> void:
 	for i in tap.size():
 		tap[i] += splash[i] * (0.35 + 0.15 * sin(TAU * 7.5 * i / RATE))
 	_baked.tap = [_wav(tap, true)]
+	_baked.thunder_near = range(3).map(func(_i: int) -> AudioStreamWAV: return _wav(_thunder(true)))
+	_baked.thunder_far = range(3).map(func(_i: int) -> AudioStreamWAV: return _wav(_thunder(false)))
 	_baked.swing = [_wav(_looped(_filter(_colour("pink", RATE * 2 + F), "bandpass", 700.0, 0.9), RATE * 2), true)]  # the air off a swinging leaf
 	for u in UNITS.size():  # a rooftop unit: the compressor's drone (a sawtooth near 59 Hz, the highs off it) under the fan's rush, beating with the blades
 		var u_saw := _zeros(n)
@@ -532,6 +599,34 @@ func _voice() -> PackedFloat32Array:  # one talker: a few seconds of syllables a
 			a[i] = (a[i] + b[i]) * e * minf(1.0, (1.0 - k) * len / 0.008)
 		out.append_array(a)
 	return _filter(out, "lowpass", 1700.0, 1.0)
+
+
+func _thunder(near: bool) -> PackedFloat32Array:  # close: a tearing crack, then the boom rolling round; far: only the roll, low and long
+	var n := RATE * (6 if near else 8)
+	var roll := _filter(_filter(_colour("brown", n), "lowpass", 180.0 if near else 110.0, 0.7), "lowpass", 260.0, 0.5)
+	var crack := _filter(_colour("white", n), "lowpass", 3000.0, 0.5)
+	var lfo := [[randf_range(0.6, 1.6), randf() * TAU], [randf_range(1.8, 3.5), randf() * TAU], [randf_range(0.2, 0.5), randf() * TAU]]  # (the roll swelling and fading as it bounces off things)
+	var d := _zeros(n)
+	for i in n:
+		var t := float(i) / RATE
+		var swell := 0.55 + 0.25 * sin(TAU * lfo[0][0] * t + lfo[0][1]) + 0.12 * sin(TAU * lfo[1][0] * t + lfo[1][1]) + 0.18 * sin(TAU * lfo[2][0] * t + lfo[2][1])
+		var env := minf(1.0, t / (0.05 if near else 0.6)) * exp(-t / (1.6 if near else 2.6))
+		d[i] = roll[i] * 2.6 * env * maxf(0.0, swell)
+		if near:
+			d[i] += crack[i] * 0.9 * exp(-t / 0.09) * (0.6 + 0.4 * randf())  # (the crack: ragged)
+	return d
+
+
+func thunder(near: bool) -> void:  # out there: through the glass when you're in (the Outside bus), the whole of it when you're out
+	if not _live or muted:
+		return
+	var p := AudioStreamPlayer.new()
+	p.stream = _baked["thunder_near" if near else "thunder_far"].pick_random()
+	p.volume_db = linear_to_db((0.9 if near else 0.45) * 0.9 / HEAD)
+	p.bus = "Outside"
+	p.finished.connect(p.queue_free)
+	add_child(p)
+	p.play()
 
 
 func _zeros(n: int) -> PackedFloat32Array:

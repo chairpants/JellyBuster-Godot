@@ -6,7 +6,7 @@ extends CanvasLayer
 
 const OPTIONS := [  # [label, kind, value]
 	["8 AM", "time", 8.0], ["NOON", "time", 12.0], ["4 PM", "time", 16.0], ["8 PM", "time", 20.0], ["MIDNIGHT", "time", 24.0],
-	["CLEAR", "sky", "clear"], ["RAIN", "sky", "rain"], ["STORM", "sky", "storm"], ["SNOW", "sky", "snow"], ["FOG", "sky", "fog"],
+	["CLEAR", "sky", "clear"], ["RAIN", "sky", "rain"], ["STORM", "sky", "storm"], ["SNOW", "sky", "snow"], ["BLIZZARD", "sky", "blizzard"], ["FOG", "sky", "fog"],
 ]
 const R_IN := 80.0
 const R_OUT := 250.0
@@ -63,8 +63,9 @@ func _pick(o: Array) -> void:
 	match o[2]:
 		"clear": w.set_now("clear")
 		"rain": w.set_now("rain", 0.6)
-		"storm": w.set_now("rain", 1.0, 0.25)
+		"storm": w.set_now("rain", 1.0, 0.25, 1.0)  # (thunder and lightning)
 		"snow": w.set_now("snow", 0.8)
+		"blizzard": w.set_now("snow", 1.0, 0.55, 1.0)  # (thick, driven sideways, a whiteout)
 		"fog": w.set_now("clear", 0.0, 0.85)
 
 
@@ -130,14 +131,19 @@ func _icon(o: Array, at: Vector2, s: float) -> void:  # each option's picture, d
 				var d := Vector2.from_angle(k * TAU / 12.0)
 				_ring.draw_line(at + d * 16.0 * s, at + d * 25.0 * s, sun, 3.0, true)
 			_ring.draw_circle(at, 13.0 * s, sun)
-		"rain", "storm", "snow":
-			var dark: bool = o[2] == "storm"
+		"rain", "storm", "snow", "blizzard":
+			var dark: bool = o[2] in ["storm", "blizzard"]
 			var cc := cloud.darkened(0.45) if dark else cloud
 			for b: Vector3 in [Vector3(-12, -4, 10), Vector3(0, -10, 13), Vector3(13, -4, 10), Vector3(0, 0, 11)]:
 				_ring.draw_circle(at + Vector2(b.x, b.y) * s, b.z * s, cc)
 			_ring.draw_rect(Rect2(at + Vector2(-22, -4) * s, Vector2(44, 12) * s), cc)
-			if o[2] == "snow":
-				for f: Vector2 in [Vector2(-14, 18), Vector2(0, 24), Vector2(14, 18), Vector2(-7, 30), Vector2(8, 32)]:
+			if o[2] in ["snow", "blizzard"]:
+				var flakes := [Vector2(-14, 18), Vector2(0, 24), Vector2(14, 18), Vector2(-7, 30), Vector2(8, 32)]
+				if o[2] == "blizzard":  # (more of them, and the wind)
+					flakes += [Vector2(-20, 28), Vector2(20, 26), Vector2(-2, 36), Vector2(16, 36)]
+					for y: float in [16.0, 26.0]:
+						_ring.draw_line(at + Vector2(-26, y) * s, at + Vector2(-10, y - 3) * s, Color(1, 1, 1, 0.7), 2.0, true)
+				for f: Vector2 in flakes:
 					for k in 3:
 						var d := Vector2.from_angle(k * PI / 3.0) * 4.0 * s
 						_ring.draw_line(at + f * s - d, at + f * s + d, Color.WHITE, 1.5, true)

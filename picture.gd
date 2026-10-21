@@ -129,6 +129,16 @@ func _ready() -> void:
 		btn.custom_minimum_size.x = 110
 		btn.pressed.connect(b[1])
 		buttons.add_child(btn)
+	var fresh := Button.new()  # everything forgotten: where you were, the clock, what you're carrying, the switches, these settings, the VCR (save.gd)
+	fresh.text = "NEW SHIFT"
+	fresh.pressed.connect(func() -> void:
+		if fresh.text == "NEW SHIFT":
+			fresh.text = "FORGET EVERYTHING? CLICK AGAIN"
+		else:
+			close()
+			$"../Save".reset())
+	_panel.visibility_changed.connect(func() -> void: fresh.text = "NEW SHIFT")
+	box.add_child(fresh)
 	_show(tv)
 
 

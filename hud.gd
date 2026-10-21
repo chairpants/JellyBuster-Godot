@@ -52,6 +52,8 @@ func _ready() -> void:
 	_full_pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_full_pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	_full.add_child(_full_pic)
+	_full.mouse_filter = Control.MOUSE_FILTER_IGNORE  # (only to look at: a click on it was eaten, so right-click's picture menu never came up full screen)
+	_full_pic.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var under := CanvasLayer.new()  # (a layer of its own, under this one: H hides the words, not the picture)
 	under.layer = layer - 1
 	under.add_child(_full)

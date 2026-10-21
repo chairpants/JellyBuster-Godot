@@ -13,7 +13,7 @@ const PLAYER_R := 0.32
 
 var doors: Array[Dictionary] = []
 var seats: Array = []
-var front := {}
+var fronts: Array = []  # the storefront's two leaves: each swings out of your way as you come to it (the left one's the level's right one, mirrored)
 var no_collide: Array[Node] = []  # what you walk through: push doors, the storefront's doors (see main.gd)
 var aim_door = null
 var aim_seat = null
@@ -117,9 +117,12 @@ func _ready() -> void:
 			no_collide.append(pivot)
 	for n: Node3D in $"../World".find_children("door_front*", "Node3D", true, false):
 		no_collide.append(n)
-		if absf(n.global_position.x - data.frontDoor.x) < 0.05:  # the right leaf: the one that opens
-			front = data.frontDoor
-			front.merge({ "leaf": n, "k": 0.0, "open": false, "hold": 0.0 })
+		var side := signf(n.global_position.x) * signf(data.frontDoor.x)  # (1: the leaf the level has; -1: its twin, hinged at the other jamb)
+		var f: Dictionary = data.frontDoor.duplicate(true)
+		f.near.x *= side
+		f.openA *= side
+		f.merge({ "leaf": n, "k": 0.0, "open": false, "hold": 0.0 })
+		fronts.append(f)
 
 
 func _key(x: float, z: float) -> String:
@@ -182,26 +185,26 @@ func _push_door(d: Dictionary, dt: float) -> void:  # whoever's in the doorway s
 	$"../Ambience".swing(d.pivot, _door_at(d), absf(d.v))
 
 
-func _front_door(dt: float) -> void:  # anyone right at the door: it swings open; then the closer pulls it shut
-	if front.is_empty():
-		return
-	var p := player.global_position
-	var near: bool = Vector2(p.x - front.near.x, p.z - front.near.z).length() < front.near.r and p.y < 2.5 and not things.locked
-	if near:
-		if not front.open:  # (the chime rings)
-			$"../Ambience".door("push", "open", Vector3(0.9, 1.1, 0.1))
-			$"../Ambience".chime(Vector3(0.9, 2.3, 0.2))
-		front.open = true
-		front.hold = 0.7
-	elif front.open:
-		front.hold -= dt
-		if front.hold <= 0.0:
-			front.open = false
-	var was: float = front.k
-	front.k = clampf(front.k + (2.2 if front.open else -1.3) * dt, 0.0, 1.0)
-	if was > 0.0 and front.k == 0.0:
-		$"../Ambience".door("push", "settle", Vector3(0.9, 1.1, 0.1))
-	Level.put(front.leaf, "rotation:y", front.openA * (1.0 - pow(1.0 - front.k, 2.0)))
+func _front_door(dt: float) -> void:  # anyone right at a door: it swings open; then the closer pulls it shut
+	for front: Dictionary in fronts:
+		var p := player.global_position
+		var at := Vector3(front.near.x, 1.1, 0.1)
+		var near: bool = Vector2(p.x - front.near.x, p.z - front.near.z).length() < front.near.r and p.y < 2.5 and not things.locked
+		if near:
+			if not front.open:  # (the chime rings)
+				$"../Ambience".door("push", "open", at)
+				$"../Ambience".chime(Vector3(front.near.x, 2.3, 0.2))
+			front.open = true
+			front.hold = 0.7
+		elif front.open:
+			front.hold -= dt
+			if front.hold <= 0.0:
+				front.open = false
+		var was: float = front.k
+		front.k = clampf(front.k + (2.2 if front.open else -1.3) * dt, 0.0, 1.0)
+		if was > 0.0 and front.k == 0.0:
+			$"../Ambience".door("push", "settle", at)
+		Level.put(front.leaf, "rotation:y", front.openA * (1.0 - pow(1.0 - front.k, 2.0)))
 
 
 func _aim() -> void:  # what the crosshair's on, and what E would do about it

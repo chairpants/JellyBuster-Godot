@@ -16,6 +16,7 @@ const REACH := 3.4
 const INV_MAX := 9
 const CELL := 0.25
 const CHUNK := 1024  # tapes per draw call (and per texture array)
+const HOME_C := Color(0.35, 1.0, 0.55)  # the gap the tape in hand goes back in
 const COVER := Vector2i(128, 192)  # a cover on the shelf. ponytail: uncompressed RGB, ~100 MB a chunk; VRAM-compress them if a big library runs short
 const WORKERS := 6  # covers fetching at once
 const YELLOW := Color(1, 0.831, 0)
@@ -68,9 +69,12 @@ var _hand := Node3D.new()
 var _hand_cover := MeshInstance3D.new()
 var _hand_back := MeshInstance3D.new()
 var _backs: Node = preload("res://backbox.gd").new()
+var _covers: CanvasLayer = preload("res://covers.gd").new()  # I: a new cover from Jellyfin
 var _dwell := { "on": null, "t": 0.0 }  # the tape the crosshair's settled on, and how long: past DWELL, its back starts drawing
 const DWELL := 0.25
 var _box := MeshInstance3D.new()
+var _home := MeshInstance3D.new()  # where the tape in hand lives on the shelf: its gap, glowing, so it's easy to take back
+var _home_t := 0.0
 var _quads: Array[MeshInstance3D] = []
 var _next_cover := 0
 var _gen := 0  # which stocking the cover workers are filling (a restock leaves the old ones to give up)
@@ -86,6 +90,22 @@ func _ready() -> void:
 	_box.mesh = _wire_box()
 	_box.visible = false
 	add_child(_box)
+	var gap := BoxMesh.new()
+	gap.size = size * 0.96
+	var gm := StandardMaterial3D.new()
+	gm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	gm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	gap.material = gm
+	_home.mesh = gap
+	_home.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_home.visible = false
+	var glow := OmniLight3D.new()  # (a little of it on the tapes either side: seen from down the aisle, not only head on)
+	glow.light_color = HOME_C
+	glow.omni_range = 0.7
+	glow.light_energy = 0.6
+	glow.position.z = size.z  # (out of the gap, in front of the shelf)
+	_home.add_child(glow)
+	add_child(_home)
 	cam.add_child(_hand)
 	var body := MeshInstance3D.new()  # the tape in hand: a black box, its cover on the front
 	body.mesh = BoxMesh.new()
@@ -108,6 +128,7 @@ func _ready() -> void:
 	for mi: MeshInstance3D in [body, _hand_cover, _hand_back]:
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF  # (it moves with you: a shadow from it, and every light near you would draw its shadows again each frame)
 	add_child(_backs)
+	get_parent().add_child.call_deferred(_covers)  # (beside us: it reaches back for recover(), and hears its keys before the player does)
 	_hand.visible = false
 	_saver_build()
 	video.started.connect(_on_started)
@@ -190,6 +211,47 @@ func stock(store: Node) -> void:  # the store's tapes onto its shelves (store.gd
 	_next_cover = 0
 	for w in WORKERS:
 		_cover_worker(_gen)
+	_hang_posters(_gen)
+
+
+const POSTER_GLOW := 0.35  # how bright a poster is with the store dark (on top of the room's light when it's on)
+var _posters: Array[MeshInstance3D] = []  # the store's poster frames (VaultBuster's 23: its own posters weren't ours to keep)
+
+
+func _hang_posters(gen: int) -> void:  # the library's own covers up on the walls: movies first, a series once, shuffled each opening
+	if _posters.is_empty():
+		var poster := RegEx.create_from_string("vaultbuster_(164|16[6-9]|17\\d|18[0-7])\\.")
+		for mi: MeshInstance3D in $"../World".find_children("*", "MeshInstance3D", true, false):
+			var m := mi.mesh.surface_get_material(0) if mi.mesh != null and mi.mesh.get_surface_count() > 0 else null
+			if m is ShaderMaterial and m.get_shader_parameter("tex") is Texture2D and poster.search(m.get_shader_parameter("tex").resource_path):
+				_posters.append(mi)
+		print("tapes: %d poster frames" % _posters.size())
+	var picks: Array = []
+	var seen := {}
+	var pool := tapes.duplicate()
+	pool.shuffle()
+	pool.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a.kind == "movie" and b.kind != "movie")
+	for t: Dictionary in pool:
+		if picks.size() == _posters.size():
+			break
+		if not seen.has(t.cover[0]):
+			seen[t.cover[0]] = true
+			picks.append(t)
+	for i in picks.size():
+		var img: Image = await Library.cover(picks[i].cover)
+		if gen != _gen:
+			return
+		if img == null:
+			continue  # (the demo, or no picture: the frame stays as it was)
+		img.flip_y()  # (the frames' UVs run bottom to top)
+		img.generate_mipmaps()
+		var m: ShaderMaterial = _posters[i].mesh.surface_get_material(0).duplicate()
+		m.set_shader_parameter("tex", ImageTexture.create_from_image(img))
+		m.set_shader_parameter("albedo", Color.WHITE)
+		m.set_shader_parameter("emission_tex", m.get_shader_parameter("tex"))  # (lit by their marquee bulbs, not the store's switches: a glow of their own)
+		m.set_shader_parameter("use_emission_tex", true)
+		m.set_shader_parameter("emission", Vector3.ONE * POSTER_GLOW)
+		_posters[i].set_surface_override_material(0, m)
 
 
 func _exit_tree() -> void:
@@ -383,13 +445,34 @@ func _gone() -> void:  # what was in hand has left it (shelved, into the VCR): t
 		inv_select(mini(maxi(was, 0), inv.size() - 1))
 
 
+func recover(t: Dictionary) -> void:  # its cover's been changed on the server (covers.gd): fetched again, onto the shelf, and into your hand
+	var img: Image = await Library.cover(t.cover)
+	if img == null:
+		return
+	if held == t:
+		var m: StandardMaterial3D = _hand_cover.material_override
+		m.albedo_texture = _mipped(img.duplicate())
+		m.albedo_color = Color.WHITE
+	var im := img.duplicate()  # (as _cover_worker does it, here on the main thread: it's only the one)
+	im.resize(COVER.x, COVER.y, Image.INTERPOLATE_LANCZOS)
+	im.convert(Image.FORMAT_RGB8)
+	im.generate_mipmaps()
+	_chunks[t.i / CHUNK].tex.update_layer(im, t.i % CHUNK)
+	hud.toast("New cover: %s" % t.t)
+
+
+static func _mipped(img: Image) -> ImageTexture:  # (the cover in hand: carried, it's small and far off; held up, near and big. Without its smaller copies, small it shimmers)
+	img.generate_mipmaps()
+	return ImageTexture.create_from_image(img)
+
+
 func show_tape(t: Dictionary) -> void:  # the tape in your hand, its cover full size (from the cache, if it's come)
 	held = t
 	inspecting = false
 	flipped = false
 	var m: StandardMaterial3D = _hand_cover.material_override
 	var path: String = Library.cover_path(t.cover)
-	m.albedo_texture = ImageTexture.create_from_image(Image.load_from_file(path)) if FileAccess.file_exists(path) else null
+	m.albedo_texture = _mipped(Image.load_from_file(path)) if FileAccess.file_exists(path) else null
 	m.albedo_color = Color.WHITE if m.albedo_texture != null else Color(0.3, 0.3, 0.35)
 	_hand.transform = HAND
 	_hand.visible = true
@@ -429,6 +512,12 @@ func put_back() -> void:  # back into its own shelf slot
 
 func _process(dt: float) -> void:
 	_saver_tick(dt)
+	_home.visible = held != null
+	if _home.visible:
+		_home.transform = held.xf
+		_home_t += dt
+		var k := 0.5 + 0.5 * sin(_home_t * TAU * 0.8)  # (a slow pulse)
+		(_home.mesh.material as StandardMaterial3D).albedo_color = Color(HOME_C * (1.2 + 1.3 * k), 0.35 + 0.35 * k)  # (past white at the top: it blooms)
 	if hovered != _dwell.on:
 		_dwell = { "on": hovered, "t": 0.0 }
 	elif hovered != null and _dwell.t < DWELL:
@@ -538,6 +627,12 @@ func _unhandled_input(e: InputEvent) -> void:
 					play_episode(playing.idx - 1)
 			KEY_BRACKETRIGHT:
 				step_episode(1)
+	if e is InputEventKey and e.pressed and not e.echo and e.physical_keycode == KEY_I and held != null and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:  # a new cover for it, from Jellyfin's providers
+		if Library.demo or Library.url.is_empty():
+			hud.toast("The demo library has no covers to change")
+		else:
+			_covers.open(held)
+		return
 	if e is InputEventKey and e.pressed and not e.echo and e.physical_keycode == KEY_R and held != null and player.seat == null:  # turn it over (held up first, if it was only carried)
 		flipped = not flipped or not inspecting
 		inspecting = true

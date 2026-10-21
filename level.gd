@@ -10,10 +10,12 @@ extends Node
 ## and its tapes, the header strips and endcap tags, the candy rack, the Staff Picks topper.
 
 const SEAM := 20.3
+const WHOLE := 2.5  # across SEAM and shorter than this (m, along z): moved, not stretched
 const LAYOUT_TEX := [88, 89, 90, 91, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132]  # textures only VaultBuster's layout used (vaultbuster_N): the endcap tags, the Staff Picks topper, strips, tags
 const SHELF_COLORS := ["ffffff", "eef0f2", "9aa3ad", "1c4dbb"]  # the merged tape bodies, backings, boards, uprights
 
 var dz := 0.0
+var _whole: Array = []  # [box, how far it moved (null: taken out)]: the small things across the line, as _shift dealt with them
 var _data := {}
 
 
@@ -39,11 +41,17 @@ func _cut(v, key: String) -> bool:  # a spot (or box) wholly in the strip a shal
 	if dz >= 0.0:
 		return false
 	var zs := []
-	if v is Dictionary and v.get("p") is Array and v.p.size() == 3:
+	if v is Dictionary and v.get("q") is Array:  # (a ceiling TV's picture: gone if its set went, _whole)
+		return _whole.any(func(w: Array) -> bool: return w[1] == null and w[0].has_point(_at(v)))
+	elif v is Dictionary and v.get("p") is Array and v.p.size() == 3:
 		zs = [v.p[2]]
 	elif v is Array and v.size() in [3, 4] and v.all(func(e) -> bool: return e is float or e is int):
 		zs = [v[2]] if v.size() == 3 else [v[2], v[3]] if key in ["boh", "lobby", "theater", "colliders"] else []
 	return not zs.is_empty() and zs.all(func(q: float) -> bool: return q > SEAM + dz and q <= SEAM)
+
+
+func _at(v: Dictionary) -> Vector3:
+	return Vector3(v.p[0], v.p[1], v.p[2])
 
 
 func data() -> Dictionary:  # data/interact.json, moved to fit
@@ -57,6 +65,11 @@ func _moved(v, key: String):
 		var out := {}
 		for k: String in v:
 			out[k] = z(v[k]) if k in ["z", "z0", "z1"] and (v[k] is float or v[k] is int) else _moved(v[k], k)
+		if v.get("q") is Array and v.get("p") is Array:  # (a ceiling TV's picture: where its set went, which was by the whole fixture's middle, _shift)
+			out.p = v.p.duplicate()
+			for w: Array in _whole:
+				if w[1] != null and w[0].has_point(_at(v)):
+					out.p[2] += w[1]
 		return out
 	if v is Array:
 		var nums: bool = v.all(func(e) -> bool: return e is float or e is int)
@@ -98,12 +111,14 @@ static func texture_of(m: MeshInstance3D) -> String:  # its first surface's pict
 
 
 func stretch(world: Node3D) -> void:  # everything past SEAM back by dz (in the tree: global positions); dz < 0 brings it forward, over a strip cut out before SEAM
+	_whole.clear()
 	if dz != 0.0:
 		for c in world.get_children():
 			if c is Node3D:
 				_shift(c)
 	if dz > 0.0:
 		_tile_ceiling(world.get_node("store"))
+	_data = {}  # (data() again, now: the ceiling TVs' pictures follow their sets, _whole)
 
 
 func _tile_ceiling(store: Node3D) -> void:  # the light panels over the new floor: the band of them just before SEAM, again and again
@@ -147,7 +162,17 @@ func _shift(n: Node3D) -> void:
 	if box.end.z <= minf(SEAM, SEAM + dz):
 		return
 	if box.position.z > SEAM + dz and box.end.z <= SEAM:  # wholly in the cut-out strip
+		_whole.append([box.grow(0.05), null])  # (and what's on it in data() with it)
 		n.free()
+		return
+	if box.size.z < WHOLE:  # a thing, not the building (a ceiling TV, say): whole, by where its middle is, not squashed into a sculpture
+		var c := box.get_center().z
+		var by = dz if c > SEAM else null if c > SEAM + dz else 0.0  # (null: its middle's in the cut-out strip, gone)
+		_whole.append([box.grow(0.05), by])  # (what's on it in data(), a TV's picture, goes the same way)
+		if by == null:
+			n.free()
+		else:
+			n.global_position.z += by
 		return
 	if n is MeshInstance3D:  # across the line: its far end goes back
 		_stretch_mesh(n)

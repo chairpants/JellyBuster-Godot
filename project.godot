@@ -52,6 +52,10 @@ uThBox={
 "type": "vec4",
 "value": Vector4(1, 1, 1, 1)
 }
+uZoneSplit={
+"type": "vec2",
+"value": Vector2(10, 19)
+}
 uBohSplit={
 "type": "vec2",
 "value": Vector2(1, 1)

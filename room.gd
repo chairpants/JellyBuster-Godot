@@ -31,6 +31,7 @@ global uniform vec4 uFloorBox;  // sales floor: x0, x1, back wall z, ceiling
 global uniform vec4 uBohBox;    // back of house: x0, x1, hall|rooms z, z1
 global uniform vec4 uLobbyBox;
 global uniform vec4 uThBox;     // auditorium: x0, x1, z0, z1
+global uniform vec2 uZoneSplit;  // the sales floor's zones: front | aisles z, aisles | lounge z
 global uniform vec2 uBohSplit;  // break room | restroom x, ceiling
 global uniform vec2 uThLight;   // x = lobby switch, y = theater house-lights switch
 global uniform float uThSconce;
@@ -40,6 +41,7 @@ global uniform vec3 uMoonSky; global uniform vec3 uMoonGround; global uniform ve
 global uniform vec3 uDayC; global uniform vec3 uNightC;
 global uniform float uSunReal;  // 1: the sun's the real light (the moon's a term here); 0: the other way about
 global uniform vec4 uFog;       // from indoors: the weather's fog on what's out there (its colour, how thick). The engine's own is off while you're inside: it would fog the room too
+const float ZONE_BLEED = 2.5;    // m: a lit zone's light past its edge, down to a third this far on
 const float VID_TV = 0.9;        // how much of the picture's colour the TV throws on what's right by it...
 const float VID_TV_R = 3.0;      // ...halved this far out
 const float VID_FLOOR = 0.06;    // the monitors over the aisles: a little of it the whole floor over
@@ -80,13 +82,16 @@ void fragment() {
 	vIn = 1.0;
 	vFog = 0.0;
 	if (P.x > uFloorBox.x && P.x < uFloorBox.y && P.z > -0.05 && P.z < uFloorBox.z && P.y < uFloorBox.w) {
-		// the sales floor: three switch zones along z, blended over ~2 m where they meet; daylight in through the glass
-		float w1 = 1.0 - smoothstep(9.0, 11.0, P.z), w3 = smoothstep(18.0, 20.0, P.z), w2 = max(0.0, 1.0 - w1 - w3);
+		// the sales floor: three switch zones along z (lights.gd's FLOOR_SPLIT, moved with the store's depth), each lit right to
+		// its edge and its light carrying on past it into the next, dying away over a few metres; daylight in through the glass
+		float f1 = exp(-max(P.z - uZoneSplit.x, 0.0) / ZONE_BLEED);
+		float f2 = exp(-max(max(uZoneSplit.x - P.z, P.z - uZoneSplit.y), 0.0) / ZONE_BLEED);
+		float f3 = exp(-max(uZoneSplit.y - P.z, 0.0) / ZONE_BLEED);
 		float win = exp(-P.z / 9.0);
 		float facing = 0.75 + 0.35 * max(-rN.z, 0.0) + 0.2 * max(rN.y, 0.0);
 		// (the web game's daylight is all here, unshadowed: (0.42 + 0.9 * win). Here it comes in as real light, with shadows,
 		// from lights.gd, and this is only what bounces round: next to nothing at the back)
-		rl = (uZone.x * w1 + uZone.y * w2 + uZone.z * w3) * fl + (day * uDayC + (1.0 - day) * uNightC) * (0.015 + 0.16 * win * win) * facing;
+		rl = max(max(uZone.x * f1, uZone.y * f2), uZone.z * f3) * fl + (day * uDayC + (1.0 - day) * uNightC) * (0.015 + 0.16 * win * win) * facing;
 		vec3 tv = P - uVidAt;
 		rl += uVid.rgb * uVid.a * (VID_TV / (1.0 + dot(tv, tv) / (VID_TV_R * VID_TV_R)) + VID_FLOOR);   // the TV's glow, a pool round the lounge; and the monitors over the aisles, a little everywhere
 	} else if (P.x > uBohBox.x && P.x < uBohBox.y && P.z >= uFloorBox.z && P.z < uBohBox.w && P.y < uBohSplit.y + 0.05 && (P.z < uBohBox.z || P.x < uFloorBox.y)) {
@@ -119,6 +124,8 @@ void light() {   // the real lights, on the surface's own colour (ALBEDO's alrea
 }
 """
 
+const TONE_EXPOSURE := 1.25  # AgX sits a little darker in the middle than the linear it replaced: this brings it back up
+
 var _shaders := {}
 var _made := {}
 
@@ -146,6 +153,8 @@ func _enter_tree() -> void:  # (before anything's _ready: tapes.gd keeps hold of
 	for pair in [["uFloorBox", b.floor], ["uBohBox", b.boh], ["uLobbyBox", b.lobby], ["uThBox", b.theater]]:
 		glob(pair[0], Vector4(pair[1][0], pair[1][1], pair[1][2], pair[1][3]))
 	glob("uBohSplit", Vector2(b.bohSplit[0], b.bohSplit[1]))
+	var split: Array = preload("res://lights.gd").FLOOR_SPLIT
+	glob("uZoneSplit", Vector2(split[0], split[1] + Level.dz))  # (the same lines the ceiling panels are sorted by: lights.gd's zone_at)
 	var swapped := light($"../World")
 	print("room light: %d surfaces, %d materials, %d shaders" % [swapped, _made.size(), _shaders.size()])
 	_moon_c = fixed.uMoonC
@@ -159,6 +168,12 @@ func _ready() -> void:  # the sun (or the moon) as a real light, and what the pi
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS  # (four drew the whole level four times over)
 	sun.shadow_blur = 1.5
 	sun.shadow_bias = 0.06
+	get_viewport().msaa_3d = Viewport.MSAA_4X  # (the shelves' edges, the spines and the signs' letters stop crawling as you move)
+	get_viewport().anisotropic_filtering_level = Viewport.ANISOTROPY_16X  # (covers and floor sharp down the length of an aisle)
+	env.tonemap_mode = Environment.TONE_MAPPER_AGX  # (the brights roll off instead of clipping flat: lit panels, the screens, the sun through the glass)
+	env.tonemap_exposure = TONE_EXPOSURE
+	env.adjustment_enabled = true
+	env.adjustment_saturation = 1.15  # (AgX greys colour a little on its way: the store's blues and the tapes' colours back)
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR  # (white, at 1: ALBEDO carries the room's light)
 	env.ambient_light_color = Color.WHITE
 	env.ambient_light_energy = 1.0

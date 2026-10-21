@@ -11,6 +11,7 @@ extends Node
 signal chosen(what: String)  # the settings form: "connect" or "demo"
 
 const CFG := "user://jellyfin.cfg"
+const RECLASS := "user://sections.cfg"  # the shelf you've put a movie or series on yourself (covers.gd's SHELF), over its genres: item id -> section
 
 var url := ""
 var key := ""
@@ -77,6 +78,20 @@ func _demo(n: int) -> void:
 	items = build(d.shows, d.eps, _sections())
 	status = "Demo library: %d tapes" % items.size()
 	_open()
+
+
+func shelves(kind: String) -> Array:  # the sections a movie (or a series) can go on, in the store's order
+	return _sections().filter(func(s: Dictionary) -> bool: return s.get("for", kind) == kind).map(func(s: Dictionary) -> String: return s.name)
+
+
+func reclass(t: Dictionary, section: String) -> void:  # onto another shelf, for good: a series with all its seasons (it moves when the store's next laid out)
+	var cf := ConfigFile.new()
+	cf.load(RECLASS)
+	cf.set_value("moved", t.cover[-1], section)  # (a movie's own id; a season's series')
+	cf.save(RECLASS)
+	for it: Dictionary in items:
+		if it.cover[-1] == t.cover[-1]:
+			it.c = section
 
 
 func _sections() -> Array:
@@ -171,9 +186,14 @@ static func build(shows: Array, eps: Array, sections: Array) -> Array:  # Jellyf
 	for sid: String in seasons:
 		by_series.get_or_add(seasons[sid][0].get("SeriesId", ""), []).append(sid)
 	var out := []
+	var moved := ConfigFile.new()
+	moved.load(RECLASS)
+	var names := sections.map(func(s: Dictionary) -> String: return s.name)
 	for it: Dictionary in shows:
 		var sort := str(it.get("SortName", it.Name)).to_lower()
 		var c := classify(it.get("Genres", []), "series" if it.Type == "Series" else "movie", sections)
+		if moved.get_value("moved", it.Id, "") in names:
+			c = moved.get_value("moved", it.Id)
 		if it.Type != "Series":
 			out.append({ "id": it.Id, "cover": [it.Id], "t": it.Name, "sort": sort, "c": c, "kind": "movie", "year": it.get("ProductionYear", 0), "e": [_ep(it, it.Name)] })
 			continue
@@ -277,6 +297,68 @@ func details(t: Dictionary) -> Dictionary:  # what the back of a tape's box says
 		"backdrop": own.Id if own.get("BackdropImageTags", []).size() else top.Id if top.get("BackdropImageTags", []).size() else "",
 		"logo": top.Id if top.get("ImageTags", {}).has("Logo") else "",
 	}
+
+
+func remote_covers(id: String) -> Array:  # the covers Jellyfin's providers (TMDb, Fanart...) have for it, as its Identify > Images shows: [{ Url, ThumbnailUrl, ProviderName, Width, Height, Language, CommunityRating }]
+	if demo or url.is_empty():
+		return []
+	var r = await _fetch("/Items/%s/RemoteImages?type=Primary&includeAllLanguages=true" % id)
+	return r.get("Images", []) if r is Dictionary else []
+
+
+func search_covers(term: String, kind: String) -> Array:  # Identify's search: the providers' matches for a name (and a year, "Alien 1979"), a cover each; shaped as remote_covers' are
+	if demo or url.is_empty() or term.strip_edges().is_empty():
+		return []
+	var info := { "Name": term.strip_edges() }
+	var year := RegEx.create_from_string("\\s(\\d{4})$").search(info.Name)
+	if year:
+		info.Name = info.Name.left(year.get_start()).strip_edges()
+		info.Year = year.get_string(1).to_int()
+	var http := HTTPRequest.new()
+	http.use_threads = true
+	add_child(http)
+	http.request("%s/Items/RemoteSearch/%s" % [url, "Series" if kind == "series" else "Movie"], _auth() + PackedStringArray(["Content-Type: application/json"]), HTTPClient.METHOD_POST, JSON.stringify({ "SearchInfo": info, "IncludeDisabledProviders": true }))
+	var r: Array = await http.request_completed
+	http.queue_free()
+	if r[0] != HTTPRequest.RESULT_SUCCESS or r[1] != 200:
+		return []
+	var out := []
+	for m: Dictionary in JSON.parse_string(r[3].get_string_from_utf8()):
+		if m.get("ImageUrl"):
+			out.append({ "Url": m.ImageUrl, "ThumbnailUrl": m.ImageUrl.replace("/t/p/original/", "/t/p/w342/"),  # (TMDb's: a small one to show)
+				"ProviderName": "%s %s" % [m.get("Name", ""), "(%d)" % m.ProductionYear if m.get("ProductionYear") else ""] })
+	return out
+
+
+func set_cover(id: String, image_url: String) -> bool:  # Jellyfin fetches that one and makes it the cover (the key has to be an admin's); the copy kept here goes
+	var http := HTTPRequest.new()
+	add_child(http)
+	http.request("%s/Items/%s/RemoteImages/Download?type=Primary&imageUrl=%s" % [url, id, image_url.uri_encode()], _auth(), HTTPClient.METHOD_POST)
+	var r: Array = await http.request_completed
+	http.queue_free()
+	if r[0] != HTTPRequest.RESULT_SUCCESS or r[1] >= 300:
+		status = "Jellyfin wouldn't change the cover (%s)" % ("HTTP %d: is the key an admin's?" % r[1] if r[0] == HTTPRequest.RESULT_SUCCESS else "no answer")
+		return false
+	for f in DirAccess.get_files_at("user://covers720"):
+		if f.begins_with(id):
+			DirAccess.remove_absolute("user://covers720/" + f)
+	return true
+
+
+func web_image(at: String) -> Image:  # a picture straight off the web (a provider's thumbnail): no key, not kept
+	var http := HTTPRequest.new()
+	http.use_threads = true
+	add_child(http)
+	http.request(at)
+	var r: Array = await http.request_completed
+	http.queue_free()
+	if r[0] != HTTPRequest.RESULT_SUCCESS or r[1] != 200:
+		return null
+	var img := Image.new()
+	for load: Callable in [img.load_jpg_from_buffer, img.load_png_from_buffer, img.load_webp_from_buffer]:
+		if load.call(r[3]) == OK:
+			return img
+	return null
 
 
 func image(id: String, kind: String, max_w: int) -> Image:  # any picture Jellyfin has (a backdrop, a logo, a face), cached in user://art; null if none

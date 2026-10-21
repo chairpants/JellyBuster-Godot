@@ -48,6 +48,8 @@ const SODIUM_WARM := 5.0  # seconds to get there, from a cold orange
 const BULB_ON := Color(1.0, 0.949, 0.769)  # 0xfff2c4
 const BULB_OFF := Color(0.227, 0.22, 0.2)  # 0x3a3833
 const DAYLIGHT := 1.5  # how strong each is at noon
+const FLASH := 12.0  # and with lightning outside
+var flash := 0.0
 const SCREEN_GAIN := 7.0  # the TV's light, for a full-white frame
 const THEATER_GLOW := { "gain": 9.0, "out": 2.0 }  # the theater screen's light on the house: not by its size (that blew the stage and curtains out, and the bloom off them washed the picture), and from a little way out, clear of what's round it
 const PORT := [-1.42, 2.25, 33.17]  # the projection booth's port, over the back of the auditorium (the level's lens)
@@ -341,6 +343,14 @@ func house_lights() -> float:  # the theater's house lights as they are: the swi
 	return maxf(zone_lvl.theater, HOUSE.preshow) * house
 
 
+func put_zone(zone: String, on: bool) -> void:  # straight to it, no warming up (a saved store coming back: save.gd)
+	zone_on[zone] = on
+	zone_lvl[zone] = 1.0 if on else 0.0
+	_warm.erase(zone)
+	for p: StandardMaterial3D in _panels[zone]:
+		p.albedo_color = PANEL_ON if on else PANEL_OFF
+
+
 func set_zone(zone: String, on: bool) -> void:
 	zone_on[zone] = on
 	if on:
@@ -390,7 +400,7 @@ func zone_at(p: Vector3) -> String:  # which switch lights this spot ("" outdoor
 	var lo: Array = _boxes.lobby
 	var th: Array = _boxes.theater
 	if p.x > f[0] and p.x < f[1] and p.z > -0.05 and p.z < f[2]:
-		return "front" if p.z < 10.0 else "aisles" if p.z < 19.0 + Level.dz else "lounge"
+		return "front" if p.z < FLOOR_SPLIT[0] else "aisles" if p.z < FLOOR_SPLIT[1] + Level.dz else "lounge"
 	if p.x > b[0] and p.x < b[1] and p.z >= f[2] and p.z < b[3] and (p.z < b[2] or p.x < f[1]):
 		if p.x > f[1]:
 			return "closet"
@@ -400,6 +410,34 @@ func zone_at(p: Vector3) -> String:  # which switch lights this spot ("" outdoor
 	if p.x > th[0] and p.x < th[1] and p.z >= th[2] and p.z < th[3]:
 		return "theater"
 	return ""
+
+
+const FLOOR_SPLIT := [10.0, 19.0]  # the sales floor's switch zones: front to here, aisles to here (+ the store's depth), lounge behind (room.gd's shader too)
+const OPEN_FLOOR := ["front", "aisles", "lounge"]  # one room to the ear: nothing between them but shelves
+const SHUT := 4.0  # walls' worth when there's no way through at all (outdoors, or a room with no door to it)
+
+
+func walls(from: Vector3, to: Vector3) -> float:  # what's between two spots, for sound (ambience.gd): 0 the same room; each doorway on the
+	# way 0.35 wide open, 1 shut; SHUT with no way round. The cheapest way through the doorways (ponytail: a few rooms, so it's relaxed a few times over, not a proper graph search)
+	var a := zone_at(from) if from.y < 3.3 else ""  # (up on the roof: outside, whatever's under it)
+	var b := zone_at(to)
+	if a in OPEN_FLOOR:
+		a = "front"
+	if b in OPEN_FLOOR:
+		b = "front"
+	if a == "" or b == "":
+		return SHUT
+	var cost := { a: 0.0 }
+	for i in 4:
+		for p in _portals:
+			var pa: String = "front" if p.a in OPEN_FLOOR else p.a
+			var pb: String = "front" if p.b in OPEN_FLOOR else p.b
+			var k := lerpf(1.0, 0.35, 1.0 if p.door == null else clampf(absf(p.door.a), 0.0, 1.0))
+			if cost.has(pa):
+				cost[pb] = minf(cost.get(pb, INF), cost[pa] + k)
+			if cost.has(pb):
+				cost[pa] = minf(cost.get(pa, INF), cost[pb] + k)
+	return minf(cost.get(b, SHUT), SHUT)
 
 
 func set_lamp(lamp: Dictionary, on: bool) -> void:
@@ -427,8 +465,8 @@ func _process(dt: float) -> void:  # fluorescents restriking, tube by tube (ligh
 		Level.put(r[0], "rotation:x", Level.ease_to(r[0].rotation.x, -0.32 if zone_on[r[1]] else 0.32, dt * 25.0))
 	var day: Vector3 = sky.day_c * sky.level + Vector3(0.035, 0.045, 0.08) * (1.0 - sky.level)  # what comes in through the glass: daylight, or moonlight and the lot's lamps
 	for w in _windows:
-		w.light_color = Color(day.x, day.y, day.z).linear_to_srgb()
-		w.light_energy = DAYLIGHT
+		w.light_color = Color(day.x, day.y, day.z).linear_to_srgb().lerp(Color(0.82, 0.88, 1.0), minf(1.0, flash * 2.0))
+		w.light_energy = DAYLIGHT + flash * FLASH  # (lightning, in through the glass: weather.gd)
 	var out: float = SPILL_OUT.energy * zone_lvl.front * clampf((0.6 - sky.level) / 0.4, 0.0, 1.0)  # (only once it's darker out there than in here)
 	for s in _spills:
 		s.light_energy = out

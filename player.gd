@@ -173,7 +173,7 @@ func _process(dt: float) -> void:
 	if full and (seat == null or not _playing()):
 		_full_screen(false)  # (got up, or the tape's out: back to the room)
 	cam.fov += (seat_fov - cam.fov) * minf(1.0, dt * 8.0)
-	crouched = seat == null and climb == null and not fly and Input.is_physical_key_pressed(KEY_C)
+	crouched = seat == null and climb == null and not fly and _key(KEY_C) > 0.0
 	if seat == null and climb == null:
 		cam.position.y += ((CROUCH_EYE if crouched else EYE) - cam.position.y) * minf(1.0, dt * 10.0)
 	var cap: CapsuleShape3D = $Shape.shape  # (down with you: under what you can crouch under)
@@ -188,7 +188,7 @@ func _physics_process(dt: float) -> void:
 	if seat != null:
 		return
 	var dir := Vector3(_key(KEY_D) - _key(KEY_A), 0, _key(KEY_S) - _key(KEY_W)).normalized()
-	var speed := (RUN if Input.is_physical_key_pressed(KEY_SHIFT) else SPEED) * (0.55 if crouched else 1.0)
+	var speed := (RUN if _key(KEY_SHIFT) > 0.0 else SPEED) * (0.55 if crouched else 1.0)
 	if fly:
 		var up := _key(KEY_SPACE) - _key(KEY_CTRL)
 		global_position += (cam.global_basis * dir + Vector3.UP * up) * speed * 2.0 * dt
@@ -232,5 +232,5 @@ func _step_up(dt: float) -> void:  # walking into something low: up onto it (the
 		global_position = raised.origin + probe + landing.get_travel()
 
 
-func _key(k: Key) -> float:
-	return 1.0 if Input.is_physical_key_pressed(k) else 0.0
+func _key(k: Key) -> float:  # (not while typing: the cover search's box, covers.gd)
+	return 1.0 if Input.is_physical_key_pressed(k) and not get_viewport().gui_get_focus_owner() is LineEdit else 0.0

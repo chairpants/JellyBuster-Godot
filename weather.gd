@@ -50,6 +50,8 @@ const FAR := [4.0, -16.2, 68.0, 31.5, 12.0, 0.0, 0.0]  # centre x z, size x z, h
 const NEAR := [0.0, 0.0, 26.0, 26.0, 9.5, -0.5, 1.0]
 const GROUND := [[0x55595e, 0x2e3237, 1.0], [0x2b2d31, 0x1b1d20, 0.6], [0x9a9d9f, 0x6a6e72, 1.0], [0xb9bcc0, 0x8c9094, 1.0], [0x3f7d3a, 0x2f5f2c, 1.0]]  # pavement, road, sidewalk, curb, grass: dry, wet, how much snow settles
 const SNOW := 0xe6ebf0
+const GALE := 1.4  # a blizzard's wind, over the day's (a thunderstorm gets half)
+const BOLT := { "every": [5.0, 20.0], "near": 0.35, "energy": 3.0 }  # a thunderstorm's lightning: seconds between strikes, how many are close (a crack, the thunder right after), how bright on the lot
 
 var kind := "clear"  # what's falling: "rain" | "snow" (kept after it stops, till the next spell)
 var k := 0.0  # how hard, 0..1
@@ -60,6 +62,11 @@ var gust := 0.0
 var blow := Vector2.ZERO  # the wind, m/s along x and z (the way the air's going)
 var fog := 0.0
 var clouds := 0.0
+var severe := 0.0  # 0 ordinary; 1 a blizzard (snow) or a thunderstorm (rain): the wheel's BLIZZARD and STORM
+var flash := 0.0  # lightning, now: 0..1 (lights.gd puts it through the storefront glass)
+var _bolt_in := 3.0
+var _strike := {}  # { t, pulses: [[from, to], ...], power }
+var _bolt := DirectionalLight3D.new()
 
 var _settled := false
 var _forced := false
@@ -75,6 +82,11 @@ var _ground: Array = []  # [material, dry, wet, snow]
 
 
 func _ready() -> void:
+	_bolt.light_color = Color(0.82, 0.88, 1.0)
+	_bolt.light_energy = 0.0
+	_bolt.visible = false
+	_bolt.light_volumetric_fog_energy = 2.0  # (the rain lit up with it)
+	add_child(_bolt)
 	_glass_build()
 	_drifts_build.call_deferred()
 	_rain = [_fall(4500, true, FAR), _fall(16000, true, NEAR)]
@@ -130,8 +142,9 @@ func _fall(n: int, lines: bool, box: Array) -> MeshInstance3D:
 	return mi
 
 
-func set_now(what: String, hard := 0.9, fogged := 0.0) -> void:  # straight to it, the ground already soaked / snowed over (the web game's test kit)
+func set_now(what: String, hard := 0.9, fogged := 0.0, wild := 0.0) -> void:  # straight to it, the ground already soaked / snowed over (the web game's test kit). wild: a blizzard, a thunderstorm
 	_forced = true
+	severe = wild
 	kind = what if what != "clear" else kind
 	k = hard if what != "clear" else 0.0
 	wet = 1.0 if what == "rain" else 0.0
@@ -172,7 +185,8 @@ func _process(dt: float) -> void:  # weatherTick
 		var c: Color = g[1].lerp(g[2], wet).lerp(Color.hex((SNOW << 8) | 0xff).srgb_to_linear(), cover * g[3] * 0.85)
 		g[0].set_shader_parameter("albedo", c.linear_to_srgb())
 	_t += dt
-	wind += (plan.wind * (0.75 + 0.25 * sin(h * 0.9 + plan.day)) + 0.2 * k - wind) * minf(1.0, dt / 8.0)
+	var gale := GALE * severe * (1.0 if kind == "snow" else 0.5) * minf(1.0, k * 2.0)
+	wind += (plan.wind * (0.75 + 0.25 * sin(h * 0.9 + plan.day)) + 0.2 * k + gale - wind) * minf(1.0, dt / 8.0)
 	var gn := 0.5 + 0.25 * sin(_t * 0.31) + 0.15 * sin(_t * 0.83 + 1.3) + 0.1 * sin(_t * 2.1 + 2.1)
 	gust = minf(1.0, wind * maxf(0.0, gn - 0.35) * 2.2)
 	var wv := wind * 5.0 + gust * 4.0
@@ -181,7 +195,7 @@ func _process(dt: float) -> void:  # weatherTick
 	for mi in _rain + _snow:
 		var m: ShaderMaterial = mi.mesh.surface_get_material(0)
 		m.set_shader_parameter("uT", _t)
-		m.set_shader_parameter("uK", k)
+		m.set_shader_parameter("uK", k * (1.0 + 0.8 * severe))  # (a blizzard: thicker than any snow)
 		m.set_shader_parameter("uNight", 1.0 - sky.level)
 		m.set_shader_parameter("uWind", blow)
 		m.set_shader_parameter("uDrift", _drift)
@@ -195,6 +209,7 @@ func _process(dt: float) -> void:  # weatherTick
 	sky.fog = fog
 	sky.snowing = kind == "snow"
 	_glass_tick(dt, raining)
+	_lightning(dt, raining)
 	_drifts_tick(dt, snowing)
 	var now := kind if k > 0.15 else "clear"  # what to say about it
 	if _said != null and now != _said:
@@ -210,6 +225,34 @@ func _process(dt: float) -> void:  # weatherTick
 const RUN := [0.0, 0.05, 0.11]  # how fast each sheet runs down
 
 var _glass: Array[StandardMaterial3D] = []
+
+
+func _lightning(dt: float, raining: float) -> void:  # a thunderstorm's: a strike now and then, flickering a few times; the thunder after it, sooner the closer
+	if severe > 0.5 and raining > 0.5:
+		_bolt_in -= dt
+		if _bolt_in <= 0.0:
+			_bolt_in = randf_range(BOLT.every[0], BOLT.every[1])
+			var near := randf() < BOLT.near
+			var pulses := []
+			var t := 0.0
+			for i in randi_range(1, 3):
+				pulses.append([t, t + randf_range(0.04, 0.09)])
+				t += randf_range(0.08, 0.22)
+			_strike = { "t": 0.0, "pulses": pulses, "power": 1.0 if near else randf_range(0.3, 0.6) }
+			_bolt.rotation = Vector3(deg_to_rad(randf_range(-75.0, -35.0)), randf() * TAU, 0.0)  # (somewhere up there)
+			get_tree().create_timer(randf_range(0.15, 0.7) if near else randf_range(1.5, 5.0)).timeout.connect(func() -> void: $"../Ambience".thunder(near))  # (sound's slower than light: ~3 s a kilometre)
+	flash = 0.0
+	if not _strike.is_empty():
+		_strike.t += dt
+		for p: Array in _strike.pulses:
+			if _strike.t >= p[0] and _strike.t < p[1]:
+				flash = _strike.power
+		if _strike.t > 1.0:
+			_strike = {}
+	_bolt.visible = flash > 0.0
+	_bolt.light_energy = flash * BOLT.energy
+	$"../Lights".flash = flash
+	$"../WorldEnvironment".environment.background_energy_multiplier = 1.0 + flash * 4.0  # (the sky lit up)
 
 
 func _glass_build() -> void:
@@ -240,7 +283,7 @@ func _glass_build() -> void:
 func _glass_tick(dt: float, raining: float) -> void:  # beads: as wet as the glass is; runners: while it's actually coming down
 	for i in _glass.size():
 		_glass[i].albedo_color.a = minf(0.95, wet if kind == "rain" or wet > 0.3 else 0.0) if i == 0 else minf(1.0, raining * 1.6)
-		_glass[i].uv1_offset.y -= dt * RUN[i] * (0.5 + raining)
+		_glass[i].uv1_offset.y += dt * RUN[i] * (0.5 + raining)  # (+: down the glass, as the sheets' UVs run)
 
 
 # ---- snow drifting where it would: banked against both sides of the lot's curb, along the far edge of the road, at

@@ -10,7 +10,7 @@ extends Node3D
 ## stand empty at the end of their block. The store's as deep as the library needs (Level.dz, set by plan() before the
 ## level loads): a band more or less in the centre, the side walls' runs longer or shorter with it.
 ## Different here: one copy of everything (no extra copies of the hits); no rides (a small section takes a bay of its
-## own); no Staff Picks, MonsterVision or candy aisle; the hanging CLASSICS sign moves up to the front band.
+## own); no Staff Picks, MonsterVision or candy aisle; the hanging signs go over their shelves (_hang_signs).
 
 const TAPE := Vector3(0.105, 0.192, 0.032)  # the tape box as tapes.gd draws it: cover across, up, thickness
 const SLOT_W := 0.13
@@ -22,6 +22,7 @@ const STORE_X := 11.0
 const STORE_Z := 28.0
 const CENTER := { "corridor": 0.9, "west": 3, "east": 4, "z0": 8.6, "gap": 2.0, "bands": 4 }
 const BAND_STEP := 2 * 0.55 + 2.0  # a band and the aisle behind it: what dz comes in steps of
+const STRIPE := 0.02  # how far the side walls' blue stripe stands off them (the back wall's is flat)
 const KIDS := { "z": 4.2, "bays": 3 }  # one gondola out from the east wall, centred front to back on the kids' carpet (z 0.1 to 8.3)
 const TAGS := [["#d7262e", "#ffffff"], ["#ffd400", "#00349c"], ["#1f9e48", "#ffffff"], ["#6c2d91", "#ffd400"], ["#f26b21", "#ffffff"], ["#00a4b4", "#ffffff"], ["#111111", "#ff3b30"], ["#d6247d", "#ffffff"]]  # endcap genre cards: background, lettering
 const CANDY := ["#d7262e", "#ffd400", "#5a3418", "#6c2d91", "#1f9e48", "#f26b21", "#1c4dbb", "#e85a9b"]  # the candy boxes' colours
@@ -160,7 +161,8 @@ func _ready() -> void:
 		mi.mesh = _parts[m].commit()
 		add_child(mi)
 	add_child(_body)
-	_move_classics_sign()
+	_hang_signs(p.k)
+	_flatten_stripes()
 	var room := get_node_or_null("../Room")
 	if room != null:
 		room.light(self)
@@ -377,13 +379,74 @@ func _bake_texts() -> void:  # each lettering's picture, once its viewport's bee
 		t.vp.queue_free()
 
 
-func _move_classics_sign() -> void:  # CLASSICS hangs over the front band, where the older movies start now
+func _hang_signs(k: int) -> void:  # KIDS over the kids' gondola; TV SHOWS over the aisle between the TV side's bands, CLASSICS (a copy of it: the level's own went with the strip a smaller store cuts out) over the classics side's
 	var store := get_node_or_null("../World/store")
 	if store == null:
 		return
-	for m: MeshInstance3D in store.find_children("*", "MeshInstance3D", true, false):
+	var aisle: float = CENTER.z0 + 2.0 * SHORT.depth + CENTER.gap / 2.0 if CENTER.bands + k >= 2 else CENTER.z0 - 0.5  # (one band: in front of it)
+	var tv := _sign(store, "vaultbuster_121.jpg")
+	var classics := []
+	for m: MeshInstance3D in tv:
+		var c: MeshInstance3D = m.duplicate()
+		m.get_parent().add_child(c)
+		c.global_transform = m.global_transform
+		if preload("res://level.gd").texture_of(m) == "vaultbuster_121.jpg":
+			var mat: Material = m.mesh.surface_get_material(0).duplicate()
+			mat.set_shader_parameter("tex", load("res://world/vaultbuster_120.jpg"))
+			c.set_surface_override_material(0, mat)
+		classics.append(c)
+	_move(_sign(store, "vaultbuster_117.jpg"), Vector3(STORE_X - 0.1 - KIDS.bays * SHORT.len / 2.0, 0, KIDS.z))
+	_move(tv, Vector3(walkway() + CENTER.corridor + CENTER.east * SHORT.len / 2.0, 0, aisle))
+	_move(classics, Vector3(walkway() - CENTER.corridor - CENTER.west * SHORT.len / 2.0, 0, aisle))
+
+
+func _flatten_stripes() -> void:  # the blue stripe along the side walls: 20 cm deep in the level, standing well off them; down to the back wall's few, still against the wall
+	var store := get_node_or_null("../World/store")
+	if store == null:
+		return
+	for m: MeshInstance3D in store.find_children("box 0_20 x 0_22 x 28_00*", "MeshInstance3D", false, false):
+		var b := m.global_transform * m.get_aabb()
+		var wall_x: float = b.position.x if b.get_center().x < 0.0 else b.end.x  # (the face against the wall stays put)
+		var k := STRIPE / b.size.x
+		var xf := m.global_transform
+		m.global_transform = Transform3D(Basis.from_scale(Vector3(k, 1, 1)) * xf.basis, Vector3(wall_x + (xf.origin.x - wall_x) * k, xf.origin.y, xf.origin.z))
+	var back := store.find_children("box 18_74 x 0_22 x 0_00*", "MeshInstance3D", false, false)
+	var walls := { "w": -7.63, "e": 10.89, "b": (back[0].global_transform * back[0].get_aabb()).position.z if back.size() else INF }  # (the side walls' faces: where their stripes sit)
+	var poster := RegEx.create_from_string("vaultbuster_(164|16[6-9]|17\\d|18[0-7])\\.")
+	for m: MeshInstance3D in store.find_children("*", "MeshInstance3D", true, false):  # the posters, frame and bulbs with them: spaced off the side walls for the old stripe, and a little off the back; back against them
+		if not poster.search(preload("res://level.gd").texture_of(m)):
+			continue
+		var g: Node3D = m.get_parent()
+		var b := _bounds_of(g)
+		if b.size.x < 0.3:  # (on a side wall)
+			g.global_position.x += (walls.w + STRIPE + 0.005 - b.position.x) if b.get_center().x < 0.0 else (walls.e - STRIPE - 0.005 - b.end.x)
+		elif b.size.z < 0.3 and absf(b.end.z - walls.b) < 0.5:  # (on the back wall: its stripe's flat)
+			g.global_position.z += walls.b - 0.005 - b.end.z
+
+
+static func _bounds_of(n: Node3D) -> AABB:
+	var box := AABB()
+	var first := true
+	for m: MeshInstance3D in n.find_children("*", "MeshInstance3D", true, false):
+		var b := m.global_transform * m.get_aabb()
+		box = b if first else box.merge(b)
+		first = false
+	return box
+
+
+func _sign(store: Node, tex: String) -> Array:  # a hanging sign: its faces, and the two cables it hangs from
+	var faces := store.find_children("*", "MeshInstance3D", true, false).filter(func(m: MeshInstance3D) -> bool: return preload("res://level.gd").texture_of(m) == tex)
+	if faces.is_empty():
+		return []
+	var at: Vector3 = faces[0].global_position
+	return faces + store.find_children("cylinder*", "MeshInstance3D", true, false).filter(func(m: MeshInstance3D) -> bool:
 		var p := m.global_position
-		var classics: bool = preload("res://level.gd").texture_of(m) == "vaultbuster_120.jpg"
-		var cable: bool = String(m.name).begins_with("cylinder") and absf(p.z - 14.3) < 0.1 and p.x < 0.0 and p.y > 3.0
-		if classics or cable:
-			m.global_position.z = CENTER.z0 - 0.5
+		return absf(p.z - at.z) < 0.05 and absf(p.x - at.x) < 1.5 and p.y > at.y + 0.2 and p.y < at.y + 0.8)
+
+
+func _move(parts: Array, to: Vector3) -> void:  # (along the floor: the height it hangs at stays)
+	if parts.is_empty():
+		return
+	var by := Vector3(to.x - parts[0].global_position.x, 0, to.z - parts[0].global_position.z)
+	for m: MeshInstance3D in parts:
+		m.global_position += by

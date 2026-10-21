@@ -62,7 +62,8 @@ func _ready() -> void:
 	add_child(audio)
 	audio.position = Vector3.ZERO  # (the TV's, once a tape goes in: tapes.gd)
 	audio.unit_size = 3.0
-	audio.max_db = 3.0  # (right up at the screen, no louder than this: the VOLUME's on the Film bus now, picture.gd)
+	audio.attenuation_model = AudioStreamPlayer3D.ATTENUATION_DISABLED  # (it only pans: how far off and what walls are between, ambience.gd's _hear, after the squeeze)
+	audio.attenuation_filter_db = 0.0
 	audio.bus = "Film"  # (evened out there: ambience.gd)
 	_has_ffmpeg = OS.execute("ffmpeg", ["-version"], []) == 0
 
@@ -306,9 +307,12 @@ func _next_frame() -> bool:
 			position = chunk.at
 			# sound rides along with the picture: both start at the top of the chunk, so drift is bounded by one chunk
 			var ogg := AudioStreamOggVorbis.load_from_file(ProjectSettings.globalize_path(_ogg(chunk.slot)))
+			print("video: chunk at %.0f s, slot %d, sound %s" % [chunk.at, chunk.slot, "%.1f s" % ogg.get_length() if ogg else "MISSING"])  # ponytail: the dropout hunt
 			if ogg != null:
 				audio.stream = ogg
 				audio.play()
+			else:
+				push_warning("video: no sound for the chunk at %.0f s (slot %d)" % [chunk.at, chunk.slot])
 			continue
 		var buf := _reader.get_buffer(FRAME_BYTES)
 		if buf.size() == FRAME_BYTES:

@@ -13,7 +13,7 @@ func _enter_tree() -> void:
 	var amb: Node = preload("res://ambience.gd").new()  # the store's sound, there before anything that makes a noise
 	amb.name = "Ambience"
 	add_child(amb)
-	for part: Array in [["Cars", preload("res://cars.gd")], ["Wheel", preload("res://wheel.gd")], ["Picture", preload("res://picture.gd")]]:  # the cars going by out front; the time and weather wheel (hold F); the TV's picture menu (P)
+	for part: Array in [["Cars", preload("res://cars.gd")], ["Wheel", preload("res://wheel.gd")], ["Picture", preload("res://picture.gd")], ["Save", preload("res://save.gd")]]:  # the cars going by out front; the time and weather wheel (hold F); the TV's picture menu (P)
 		var n: Node = part[1].new()
 		n.name = part[0]
 		add_child(n)

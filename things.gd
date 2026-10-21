@@ -104,10 +104,10 @@ func _ready() -> void:
 			push_warning("%s isn't where the web game has it in the level (moved, or deleted?)" % what[0])
 	var shape := CollisionShape3D.new()
 	var box := BoxShape3D.new()
-	box.size = Vector3(1.9, 2.3, 0.1)
+	box.size = Vector3(3.8, 2.3, 0.1)  # (both leaves: the left one's doorway, to x -1.75, was left open)
 	shape.shape = box
 	shape.disabled = true
-	_block.position = Vector3(0.9, 1.15, 0.1)
+	_block.position = Vector3(0.0, 1.15, 0.1)
 	_block.add_child(shape)
 	add_child(_block)
 	if T.sink != null:  # the tap's stream: there while it's running
