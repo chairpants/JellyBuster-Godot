@@ -20,6 +20,7 @@ var watch_as := ""  # whose watching it's kept as on the server (a user's name; 
 var user_id := ""  # theirs, once connected ("" in the demo: nothing's kept)
 var status := ""
 var demo := false
+var offline := false  # opened on the library as it was last time (CACHE): nothing to play
 var items: Array = []  # a tape each: { id, cover (item ids to try for its picture), t, sort, c (section), kind (movie / series), year, added (when it came to the server), seen, e (episodes, as video.gd plays them) }
 var played := {}  # item id -> true: the movies and episodes watched to the end, as whoever's watching (seen on the shelf: tapes.gd's sticker)
 var plan := {}  # where everything goes (store.gd plan())
@@ -70,6 +71,7 @@ func _start(ask: bool) -> void:  # (on the loading screen) connect, asking for t
 			cfg.set_value("server", "watch_as", watch_as)
 			cfg.save(CFG)
 			demo = false
+			offline = false
 			items = build(shows.Items, eps.Items, _sections())
 			var who: String = await _pick_user()
 			var seen = await _fetch("/Items?Recursive=true&IsPlayed=true&IncludeItemTypes=Movie,Episode&userId=%s&EnableImages=false&EnableUserData=false&EnableTotalRecordCount=false" % user_id) if user_id else null
@@ -93,6 +95,7 @@ func _start(ask: bool) -> void:  # (on the loading screen) connect, asking for t
 				played[id] = true
 			mark_seen()
 			user_id = ""  # (nothing's told back: it'd go nowhere)
+			offline = true
 			status = "Offline: %s · the library as it was %s · F2 to try again" % [why.trim_prefix("Jellyfin: "), kept.when.left(10)]
 			_open()
 			return
@@ -101,6 +104,7 @@ func _start(ask: bool) -> void:  # (on the loading screen) connect, asking for t
 
 func _demo(n: int) -> void:
 	demo = true
+	offline = false
 	var d := demo_library(n)
 	items = build(d.shows, d.eps, _sections())
 	played = {}
@@ -547,7 +551,7 @@ static func demo_library(n: int) -> Dictionary:  # Jellyfin-shaped: n movies, an
 		for k in rng.randi_range(1, 3):
 			g.append(pool[rng.randi() % pool.size()])
 		var title := "%s %s %s" % ["The" if rng.randf() < 0.3 else "", words[rng.randi() % words.size()], words[rng.randi() % words.size()]]
-		var added := Time.get_datetime_string_from_unix_time(1600000000 + rng.randi_range(0, 160000000))
+		var added := Time.get_datetime_string_from_unix_time(1600000000 + i * 7919 % 1000 * 160000)  # (not from rng: the same library as ever, tape for tape)
 		shows.append({ "Id": "d%d" % i, "Type": "Series" if series else "Movie", "Name": title.strip_edges(), "Genres": g, "RunTimeTicks": 54000000000, "ProductionYear": rng.randi_range(1965, 2025), "DateCreated": added })
 		if series:
 			for s in rng.randi_range(1, 5):

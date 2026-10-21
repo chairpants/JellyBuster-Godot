@@ -15,7 +15,13 @@ middle, a section at a time, A to Z. A bigger library makes a deeper store.
 
 The first time it starts it asks for the server's address and the API key, and remembers them (in Godot's user data
 folder, `jellyfin.cfg`). F2 in the store asks again. Or pick the made-up library to look round without a server
-(`godot --path . -- --demo`, or `--demo=5000` for a big one).
+(`godot --path . -- --demo`, or `--demo=5000` for a big one). If the server can't be reached, the store opens on the
+library as it was last time (`library.json`): everything to look at, nothing to play, till F2 connects again.
+
+What you watch is kept on Jellyfin as the user named in F2's **Watch as** (blank: whoever used Jellyfin last): a tape
+starts where any Jellyfin app left off, and how far you've got goes back to the server. Tapes you've watched to the end
+wear a SEEN IT sticker. The game keeps where you left everything (where you stood, the clock, the weather, the lights,
+the doors, what you're carrying) and puts it back next time; the settings' NEW SHIFT forgets it all.
 
 | Key | |
 |---|---|
@@ -23,14 +29,17 @@ folder, `jellyfin.cfg`). F2 in the store asks again. Or pick the made-up library
 | Click | A tape off the shelf, held up to look at; again: in your hand; on its empty slot: back it goes. Right-click: put it back |
 | 1-9, wheel | Which of the tapes you're carrying is in your hand |
 | E | Doors, seats, light switches, lamps, ladders; at the theater's screen or the lounge TV, the tape in your hand goes in (again: out) |
-| E on the register | The store's terminal: search for a title or browse a section; on a title, S lights its slot on the shelf. Click to pick, right-click or Esc to go back |
+| E on the register | The store's terminal: search for a title, browse a section, new arrivals, a staff pick you haven't seen; on a title, S lights its slot on the shelf, E (a season) lists its episodes to wind the tape to. Click to pick, right-click or Esc to go back |
 | R | Turn the tape in your hand over: the back of the box, from Jellyfin (the blurb, the cast, the credits); again: the front |
+| I | A new cover for the tape in your hand, from Jellyfin's providers (search by another name; IT'S THIS ONE re-identifies a wrong match); its SHELF moves it to another section |
+| T / Y | Subtitles (each text track the film has, then off) / the next sound track: both remembered by language for the next film |
 | , . (held) / [ ] | Rewind / fast-forward (a bar shows where to; plays from there half a second after letting go); the episode before / after |
 | / | Pause the tape that's playing; again: play |
 | Wheel, sat down | Zoom; all the way in on a screen that's playing, one more notch: the picture full screen (back out: the room) |
 | F | Sat down with a tape on: full screen and back; stood up: fly. Held: the time and weather wheel (pick with the mouse) |
 | L / M / J / H | Skip an hour / mute / fold the log / hide everything written on screen |
-| F2 | The server settings |
+| P (or right-click sat down) | Settings: the picture, the volume, GRAPHICS (lighting effects, smooth edges, render scale, full screen), CONTROLS (field of view, mouse speed, invert Y), NEW SHIFT |
+| F1 / F2 / F11 | The keys / the server settings / full screen |
 | Esc | Free the mouse |
 
 ## Sections
@@ -44,16 +53,20 @@ movie's a new release, out on the walls. Edit it to taste.
 
 | File | |
 |---|---|
-| `jellyfin.gd` | The library (autoload `Library`): the settings, fetching, a tape per movie and per season, sorting into sections; covers, cached |
+| `jellyfin.gd` | The library (autoload `Library`): the settings, fetching, a tape per movie and per season, sorting into sections; covers, cached; what's been watched, and how far, to and from the server; subtitles |
 | `store.gd` | The shelves: the layout (walls, kids, centre), the gondolas, the signs; how deep the store has to be |
 | `level.gd` | The level made that deep (autoload `Level`): what's past the lounge slides back, what crosses stretches |
 | `tapes.gd` | Tapes on and off the shelves, in hand, into the theater's projector |
 | `backbox.gd` | The back of a tape's box: Jellyfin's details laid out like a rental's, drawn once into a texture |
-| `video.gd` | Plays a Jellyfin item through ffmpeg onto the screens |
+| `video.gd` | Plays a Jellyfin item through ffmpeg onto the screens, its sound one gapless stream |
+| `pos.gd` | The register's terminal (VaultBuster's POS/NET) |
+| `covers.gd` | I: a new cover, a re-identify, another shelf |
+| `save.gd` | Where everything was left, kept and put back |
+| `picture.gd` | The settings (P) |
 | `world/world.scn`, `data/interact.json` | VaultBuster's level and where everything in it is |
 | the rest | The player, doors, lights, the sky and weather, sound: VaultBuster's |
 
-`godot --headless --path . --script tools/jellyfin_check.gd` checks the sections and the layout without a server.
+`godot --headless --path . --script tools/jellyfin_check.gd` checks the sections, the layout and the subtitle reader without a server.
 `godot --path . -- --demo --shot --at=x,y,z,yaw,pitch` saves `shot.png` from there.
 `tools/shots.sh <name>` takes the same seven views every time into `shots/<name>/`, to compare before and after a change.
 `godot --path . -- --demo --snapshot [--hour=h]` saves the store as the game built it to `baked/snapshot.scn`: open it in

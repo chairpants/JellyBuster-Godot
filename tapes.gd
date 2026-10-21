@@ -922,6 +922,9 @@ func vcr_use() -> void:  # E on the screen: the tape in hand goes in, and the on
 func play_episode(idx: int, tape: Dictionary = playing.tape if playing != null else {}) -> void:
 	if tape.is_empty():
 		return
+	if Library.offline:
+		hud.toast("⚠ Offline: Jellyfin's out of reach, so no film till it's back (F2)")
+		return
 	idx = clampi(idx, 0, tape.e.size() - 1)
 	var at: float = tape.at if idx == tape.ep else 0.0
 	if at == 0.0:  # (never played here: where Jellyfin has them up to, from any app)
