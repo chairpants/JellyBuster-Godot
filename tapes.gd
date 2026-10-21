@@ -134,6 +134,10 @@ func _ready() -> void:
 	video.ended.connect(func() -> void:
 		if playing != null:
 			Library.report(playing.tape.e[playing.idx][2], 0.0, true)  # (watched)
+			Library.played[playing.tape.e[playing.idx][2]] = true
+			if not playing.tape.get("seen", false) and playing.tape.e.all(func(ep: Array) -> bool: return Library.played.has(ep[2])):
+				playing.tape.seen = true
+				recover(playing.tape, false)  # (its sticker on)
 		step_episode(1))
 	video.failed.connect(func(why: String) -> void: hud.toast("⚠ " + why))
 	stock.call_deferred($"../Store")  # (once the store's built its shelves)
@@ -278,6 +282,7 @@ func _cover_worker(gen: int) -> void:  # covers onto the shelf, the next one not
 			var im: Image = shelf[0] if shelf[0] != null else Image.load_from_file(path) if FileAccess.file_exists(path) else null
 			if im != null:
 				im.resize(COVER.x, COVER.y, Image.INTERPOLATE_LANCZOS)  # (720 tall down to the shelf's: Lanczos, so it stays sharp)
+				_stickered(im, t)
 				im.convert(Image.FORMAT_RGB8)
 				im.generate_mipmaps()
 			shelf[0] = im)
@@ -445,7 +450,7 @@ func _sharp_tick(dt: float) -> void:
 	for t: Dictionary in want:
 		if _sharp.any(func(s: Array) -> bool: return s[1] == t) or free.is_empty():
 			continue
-		var tex: ImageTexture = _sharp_cover(Library.cover_path(t.cover))
+		var tex: ImageTexture = _sharp_cover(t)
 		if tex == null:
 			continue  # (loading, or none: the shelf's will do meanwhile)
 		var s: Array = free.pop_back()
@@ -455,7 +460,9 @@ func _sharp_tick(dt: float) -> void:
 		s[0].visible = true
 
 
-func _sharp_cover(path: String) -> ImageTexture:  # the 720 cover as a texture, or null till it's loaded (asked for in the background)
+func _sharp_cover(t: Dictionary) -> ImageTexture:  # the 720 cover as a texture, or null till it's loaded (asked for in the background)
+	var file: String = Library.cover_path(t.cover)
+	var path := file + ("+seen" if t.get("seen", false) else "")  # (kept by how it looks)
 	if _sharp_tex.has(path):
 		var tex: ImageTexture = _sharp_tex[path]
 		_sharp_tex.erase(path)
@@ -474,11 +481,12 @@ func _sharp_cover(path: String) -> ImageTexture:  # the 720 cover as a texture, 
 		if _sharp_tex.size() > SHARP.keep:
 			_sharp_tex.erase(_sharp_tex.keys()[0])
 		return _sharp_tex[path]
-	if FileAccess.file_exists(path) and _sharp_loading.size() < 4:
+	if FileAccess.file_exists(file) and _sharp_loading.size() < 4:
 		var out := [null]
 		var task := WorkerThreadPool.add_task(func() -> void:
-			var img := Image.load_from_file(path)
+			var img := Image.load_from_file(file)
 			if img != null:
+				_stickered(img, t)
 				img.generate_mipmaps()
 			out[0] = img)
 		_sharp_loading[path] = [task, out]
@@ -572,20 +580,37 @@ func _gone() -> void:  # what was in hand has left it (shelved, into the VCR): t
 		inv_select(mini(maxi(was, 0), inv.size() - 1))
 
 
-func recover(t: Dictionary) -> void:  # its cover's been changed on the server (covers.gd): fetched again, onto the shelf, and into your hand
+func recover(t: Dictionary, say := true) -> void:  # its cover's been changed on the server (covers.gd), or it's just been watched: fetched again, onto the shelf, and into your hand
 	var img: Image = await Library.cover(t.cover)
 	if img == null:
 		return
 	if held == t:
 		var m: StandardMaterial3D = _hand_cover.material_override
-		m.albedo_texture = _mipped(img.duplicate())
+		m.albedo_texture = _mipped(_stickered(img.duplicate(), t))
 		m.albedo_color = Color.WHITE
 	var im := img.duplicate()  # (as _cover_worker does it, here on the main thread: it's only the one)
 	im.resize(COVER.x, COVER.y, Image.INTERPOLATE_LANCZOS)
+	_stickered(im, t)
 	im.convert(Image.FORMAT_RGB8)
 	im.generate_mipmaps()
 	_chunks[t.i / CHUNK].tex.update_layer(im, t.i % CHUNK)
-	hud.toast("New cover: %s" % t.t)
+	if say:
+		hud.toast("New cover: %s" % t.t)
+
+
+static var _sticker: Image = (load("res://world/sticker_seen.png") as Texture2D).get_image()  # a rental store's round sticker: SEEN IT
+
+
+static func _stickered(img: Image, t: Dictionary) -> Image:  # watched: the sticker on, low on the cover's right (as a store's staff put them on)
+	if not t.get("seen", false):
+		return img
+	var w := img.get_width() / 4
+	var s := _sticker.duplicate()
+	s.resize(w, w, Image.INTERPOLATE_BILINEAR)
+	img.convert(Image.FORMAT_RGBA8)
+	img.blend_rect(s, Rect2i(0, 0, w, w), Vector2i(img.get_width() - w - w / 6, img.get_height() - w - w / 4))
+	img.convert(Image.FORMAT_RGB8)
+	return img
 
 
 static func _mipped(img: Image) -> ImageTexture:  # (the cover in hand: carried, it's small and far off; held up, near and big. Without its smaller copies, small it shimmers)
@@ -599,7 +624,7 @@ func show_tape(t: Dictionary) -> void:  # the tape in your hand, its cover full 
 	flipped = false
 	var m: StandardMaterial3D = _hand_cover.material_override
 	var path: String = Library.cover_path(t.cover)
-	m.albedo_texture = _mipped(Image.load_from_file(path)) if FileAccess.file_exists(path) else null
+	m.albedo_texture = _mipped(_stickered(Image.load_from_file(path), t)) if FileAccess.file_exists(path) else null
 	m.albedo_color = Color.WHITE if m.albedo_texture != null else Color(0.3, 0.3, 0.35)
 	_hand.transform = HAND
 	_hand.visible = true

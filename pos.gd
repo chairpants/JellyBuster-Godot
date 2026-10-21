@@ -74,6 +74,10 @@ func _date() -> String:
 	return "%02d/%02d/%s" % [d.month, d.day, str(d.year).right(2)]
 
 
+func _day(iso: String) -> String:  # Jellyfin's "2026-10-17T..." as the terminal writes a date
+	return "%s/%s/%s" % [iso.substr(5, 2), iso.substr(8, 2), iso.substr(2, 2)] if iso.length() >= 10 else "-"
+
+
 func _library() -> String:
 	return "DEMO LIBRARY" if Library.demo else "JELLYFIN"
 
@@ -208,8 +212,11 @@ func _title_detail(t: Dictionary) -> void:
 			else:
 				out.append(" RUNNING..: %s" % (_hm(eps[0][3]) if not eps.is_empty() and float(eps[0][3]) > 0.0 else "-"))
 			out.append(" SHELF....: %s, %d OF %d ON IT, A TO Z" % [t.c.to_upper(), nth, on.size()])
+			if str(t.get("added", "")) != "":
+				out.append(" ADDED....: %s" % _day(t.added))
+			out.append(" SEEN IT..: %s" % ("YES" if t.get("seen", false) else "NO"))
 			out.append(" STATUS...: %s" % st)
-			while out.size() < 10:
+			while out.size() < 12:
 				out.append("")
 			if st == "ON SHELF":
 				out.append_array(["  S  SHOW ME ON THE SHELF", "", " ITS SLOT LIGHTS UP AMBER TILL YOU TAKE IT DOWN."])
@@ -271,6 +278,11 @@ func _pick(key: String) -> bool:  # a menu selection. -> false if there's no suc
 				func(c: String) -> void: _go(_titles(c.to_upper(), tapes.tapes.filter(func(t: Dictionary) -> bool: return t.c == c)))))
 		"3": _go(_info("WHAT'S IN THE VCR", _vcr))
 		"4": _go(_titles("TAPES YOU'RE CARRYING", tapes.inv.duplicate(), "YOU'RE NOT CARRYING ANY."))
+		"5":
+			var fresh: Array = tapes.tapes.filter(func(t: Dictionary) -> bool: return str(t.get("added", "")) != "")
+			fresh.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return str(a.added) > str(b.added))
+			_go(_list("NEW ARRIVALS", "      %s%s%s" % [L("TITLE", 34), L("SECTION", 19), "ADDED"], fresh.slice(0, 100),
+				func(t: Dictionary, n: int) -> String: return " %s  %s %s %s" % [R(n, 3), L(t.t.to_upper(), 33), L(t.c.to_upper(), 18), _day(t.added)], _title_detail))
 		"H": _go(_info("HELP", func() -> Array: return [" FROM THE MAIN MENU YOU CAN TYPE A NUMBER, OR A COMMAND:", "",
 				"   FIND <TITLE>     TITLE SEARCH            VCR               WHAT'S IN IT",
 				"   VER              VERSION                 LOGOFF / EXIT     END SESSION", "",
@@ -286,7 +298,7 @@ func _pick(key: String) -> bool:  # a menu selection. -> false if there's no suc
 func _main_menu() -> Dictionary:
 	return { "title": "MAIN MENU", "prompt": "SELECTION OR COMMAND", "menu": true,
 		"lines": func() -> Array:
-			var left := [" INVENTORY", "  1  TITLE SEARCH", "  2  BROWSE BY SECTION", "  3  WHAT'S IN THE VCR", "  4  TAPES YOU'RE CARRYING"]
+			var left := [" INVENTORY", "  1  TITLE SEARCH", "  2  BROWSE BY SECTION", "  3  WHAT'S IN THE VCR", "  4  TAPES YOU'RE CARRYING", "  5  NEW ARRIVALS"]
 			var right := [" SYSTEM", "  H  HELP / COMMANDS", "  0  LOG OFF"]
 			var out: Array = [""]
 			for i in left.size():
@@ -303,7 +315,7 @@ func _main_menu() -> Dictionary:
 			elif cmd == "VER":
 				_msg = "POS/NET 2.3 (C) 1993 VIDEOTRAK SYSTEMS INC.  LICENSED TO VAULTBUSTER VIDEO #0417"
 			else:
-				var alias: String = { "VCR": "3", "PLAYING": "3", "MINE": "4", "HELP": "H", "?": "H", "LOGOFF": "0", "EXIT": "0", "LOGOUT": "0" }.get(cmd, "")
+				var alias: String = { "VCR": "3", "PLAYING": "3", "MINE": "4", "NEW": "5", "HELP": "H", "?": "H", "LOGOFF": "0", "EXIT": "0", "LOGOUT": "0" }.get(cmd, "")
 				if alias == "" or not _pick(alias):
 					_msg = "UNKNOWN COMMAND: %s.  TYPE H FOR HELP." % v }
 

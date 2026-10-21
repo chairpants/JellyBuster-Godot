@@ -11,6 +11,7 @@ extends Node
 signal chosen(what: String)  # the settings form: "connect" or "demo"
 
 const CFG := "user://jellyfin.cfg"
+const CACHE := "user://library.json"  # the last library fetched, to open with when the server can't be reached
 const RECLASS := "user://sections.cfg"  # the shelf you've put a movie or series on yourself (covers.gd's SHELF), over its genres: item id -> section
 
 var url := ""
@@ -19,7 +20,8 @@ var watch_as := ""  # whose watching it's kept as on the server (a user's name; 
 var user_id := ""  # theirs, once connected ("" in the demo: nothing's kept)
 var status := ""
 var demo := false
-var items: Array = []  # a tape each: { id, cover (item ids to try for its picture), t, sort, c (section), kind (movie / series), year, e (episodes, as video.gd plays them) }
+var items: Array = []  # a tape each: { id, cover (item ids to try for its picture), t, sort, c (section), kind (movie / series), year, added (when it came to the server), seen, e (episodes, as video.gd plays them) }
+var played := {}  # item id -> true: the movies and episodes watched to the end, as whoever's watching (seen on the shelf: tapes.gd's sticker)
 var plan := {}  # where everything goes (store.gd plan())
 var _first := 0  # a box's back being fetched: the shelf's covers wait for it (the one you're looking at goes first)
 
@@ -55,8 +57,8 @@ func _start(ask: bool) -> void:  # (on the loading screen) connect, asking for t
 		_say("Connecting to %s…" % url)
 		var got := {}  # both asked for at once; no images or watched state wanted (they doubled the wait for the episodes)
 		var ask_for := func(k: String, what: String) -> void: got[k] = await _fetch("/Items?Recursive=true&EnableImages=false&EnableUserData=false&EnableTotalRecordCount=false&" + what)
-		ask_for.call("shows", "IncludeItemTypes=Movie,Series&Fields=Genres,SortName,ProductionYear")
-		ask_for.call("eps", "IncludeItemTypes=Episode&Fields=SortName")
+		ask_for.call("shows", "IncludeItemTypes=Movie,Series&Fields=Genres,SortName,ProductionYear,DateCreated")
+		ask_for.call("eps", "IncludeItemTypes=Episode&Fields=SortName,DateCreated")
 		while got.size() < 2:
 			await get_tree().process_frame
 		var shows = got.shows
@@ -70,10 +72,30 @@ func _start(ask: bool) -> void:  # (on the loading screen) connect, asking for t
 			demo = false
 			items = build(shows.Items, eps.Items, _sections())
 			var who: String = await _pick_user()
+			var seen = await _fetch("/Items?Recursive=true&IsPlayed=true&IncludeItemTypes=Movie,Episode&userId=%s&EnableImages=false&EnableUserData=false&EnableTotalRecordCount=false" % user_id) if user_id else null
+			played = {}
+			for it: Dictionary in seen.Items if seen is Dictionary else []:
+				played[it.Id] = true
+			mark_seen()
+			var f := FileAccess.open(CACHE, FileAccess.WRITE)
+			f.store_string(JSON.stringify({ "shows": shows.Items, "eps": eps.Items, "played": played.keys(), "when": Time.get_datetime_string_from_system() }))
+			f.close()
 			status = "Jellyfin: %d tapes%s" % [items.size(), " · watching as " + who if who else ""]
 			_open()
 			return
 		why = status
+		if not ask and FileAccess.file_exists(CACHE):  # (not asked for, F2: the store as it was last time; F2 to try again)
+			var kept: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(CACHE))
+			demo = false
+			items = build(kept.shows, kept.eps, _sections())
+			played = {}
+			for id: String in kept.played:
+				played[id] = true
+			mark_seen()
+			user_id = ""  # (nothing's told back: it'd go nowhere)
+			status = "Offline: %s · the library as it was %s · F2 to try again" % [why.trim_prefix("Jellyfin: "), kept.when.left(10)]
+			_open()
+			return
 		ask = true
 
 
@@ -81,8 +103,20 @@ func _demo(n: int) -> void:
 	demo = true
 	var d := demo_library(n)
 	items = build(d.shows, d.eps, _sections())
+	played = {}
+	for i in range(0, d.shows.size(), 6):  # (some of it watched, to see the stickers)
+		played[d.shows[i].Id] = true
+	for ep: Dictionary in d.eps:
+		if ep.SeriesId.substr(1).to_int() % 3 == 0:
+			played[ep.Id] = true
+	mark_seen()
 	status = "Demo library: %d tapes" % items.size()
 	_open()
+
+
+func mark_seen() -> void:  # a tape's seen when everything on it's been watched
+	for t: Dictionary in items:
+		t.seen = t.e.all(func(ep: Array) -> bool: return played.has(ep[2]))
 
 
 func shelves(kind: String) -> Array:  # the sections a movie (or a series) can go on, in the store's order
@@ -222,14 +256,14 @@ static func build(shows: Array, eps: Array, sections: Array) -> Array:  # Jellyf
 		if moved.get_value("moved", it.Id, "") in names:
 			c = moved.get_value("moved", it.Id)
 		if it.Type != "Series":
-			out.append({ "id": it.Id, "cover": [it.Id], "t": it.Name, "sort": sort, "c": c, "kind": "movie", "year": it.get("ProductionYear", 0), "e": [_ep(it, it.Name)] })
+			out.append({ "id": it.Id, "cover": [it.Id], "t": it.Name, "sort": sort, "c": c, "kind": "movie", "year": it.get("ProductionYear", 0), "added": it.get("DateCreated", ""), "e": [_ep(it, it.Name)] })
 			continue
 		for sid: String in by_series.get(it.Id, []):  # (a series with nothing in it has nothing to play)
 			var first: Dictionary = seasons[sid][0]
 			var n: int = first.get("ParentIndexNumber", 0)
 			var season: String = first.get("SeasonName", "Specials" if n == 0 else "Season %d" % n)
 			out.append({ "id": sid, "cover": [sid, it.Id], "t": "%s: %s" % [it.Name, season], "sort": "%s %04d" % [sort, n if n > 0 else 9999], "c": c, "kind": "series", "year": first.get("ProductionYear", it.get("ProductionYear", 0)),
-				"e": seasons[sid].map(func(ep: Dictionary) -> Array: return _ep(ep, "%s - S%02dE%02d - %s" % [it.Name, n, ep.get("IndexNumber", 0), ep.Name])) })
+				"added": seasons[sid].reduce(func(m: String, ep: Dictionary) -> String: return m if m > str(ep.get("DateCreated", "")) else str(ep.get("DateCreated", "")), ""), "e": seasons[sid].map(func(ep: Dictionary) -> Array: return _ep(ep, "%s - S%02dE%02d - %s" % [it.Name, n, ep.get("IndexNumber", 0), ep.Name])) })
 	var order := {}
 	for i in sections.size():
 		order[sections[i].name] = i
@@ -468,9 +502,10 @@ static func demo_library(n: int) -> Dictionary:  # Jellyfin-shaped: n movies, an
 		for k in rng.randi_range(1, 3):
 			g.append(pool[rng.randi() % pool.size()])
 		var title := "%s %s %s" % ["The" if rng.randf() < 0.3 else "", words[rng.randi() % words.size()], words[rng.randi() % words.size()]]
-		shows.append({ "Id": "d%d" % i, "Type": "Series" if series else "Movie", "Name": title.strip_edges(), "Genres": g, "RunTimeTicks": 54000000000, "ProductionYear": rng.randi_range(1965, 2025) })
+		var added := Time.get_datetime_string_from_unix_time(1600000000 + rng.randi_range(0, 160000000))
+		shows.append({ "Id": "d%d" % i, "Type": "Series" if series else "Movie", "Name": title.strip_edges(), "Genres": g, "RunTimeTicks": 54000000000, "ProductionYear": rng.randi_range(1965, 2025), "DateCreated": added })
 		if series:
 			for s in rng.randi_range(1, 5):
 				for e in rng.randi_range(6, 22):
-					eps.append({ "Id": "d%de%d_%d" % [i, s, e], "SeriesId": "d%d" % i, "SeasonId": "d%ds%d" % [i, s + 1], "SeasonName": "Season %d" % (s + 1), "ParentIndexNumber": s + 1, "IndexNumber": e + 1, "Name": "Episode %d" % (e + 1), "RunTimeTicks": 13200000000 })
+					eps.append({ "Id": "d%de%d_%d" % [i, s, e], "SeriesId": "d%d" % i, "SeasonId": "d%ds%d" % [i, s + 1], "SeasonName": "Season %d" % (s + 1), "ParentIndexNumber": s + 1, "IndexNumber": e + 1, "Name": "Episode %d" % (e + 1), "RunTimeTicks": 13200000000, "DateCreated": added })
 	return { "shows": shows, "eps": eps }
