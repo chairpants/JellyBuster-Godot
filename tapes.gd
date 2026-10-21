@@ -17,6 +17,7 @@ const INV_MAX := 9
 const CELL := 0.25
 const CHUNK := 1024  # tapes per draw call (and per texture array)
 const FOCUS_BLUR := 0.1  # how soft the store goes behind a tape held up
+const GUIDE_C := Color(1.0, 0.75, 0.2)  # a tape asked for at the register: amber
 const HOME_C := Color(0.35, 1.0, 0.55)  # the gap the tape in hand goes back in
 const COVER := Vector2i(128, 192)  # a cover on the shelf. ponytail: uncompressed RGB, ~100 MB a chunk; VRAM-compress them if a big library runs short
 const WORKERS := 6  # covers fetching at once
@@ -75,8 +76,10 @@ var _dwell := { "on": null, "t": 0.0 }  # the tape the crosshair's settled on, a
 const DWELL := 0.25
 var _box := MeshInstance3D.new()
 var _focus := CameraAttributesPractical.new()  # a tape held up to read: what's past it goes soft
-var _home := MeshInstance3D.new()  # where the tape in hand lives on the shelf: its gap, glowing, so it's easy to take back
+var _home: MeshInstance3D  # where the tape in hand lives on the shelf: its gap, glowing, so it's easy to take back
 var _home_t := 0.0
+var _guide: MeshInstance3D  # a tape asked for at the register (pos.gd's SHOW ME): glowing on its shelf till it's picked up
+var sought = null
 var _quads: Array[MeshInstance3D] = []
 var _next_cover := 0
 var _gen := 0  # which stocking the cover workers are filling (a restock leaves the old ones to give up)
@@ -92,22 +95,8 @@ func _ready() -> void:
 	_box.mesh = _wire_box()
 	_box.visible = false
 	add_child(_box)
-	var gap := BoxMesh.new()
-	gap.size = size * 0.96
-	var gm := StandardMaterial3D.new()
-	gm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	gm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	gap.material = gm
-	_home.mesh = gap
-	_home.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_home.visible = false
-	var glow := OmniLight3D.new()  # (a little of it on the tapes either side: seen from down the aisle, not only head on)
-	glow.light_color = HOME_C
-	glow.omni_range = 0.7
-	glow.light_energy = 0.6
-	glow.position.z = size.z  # (out of the gap, in front of the shelf)
-	_home.add_child(glow)
-	add_child(_home)
+	_home = _marker(size * 0.96, HOME_C, 0.7, 0.6)
+	_guide = _marker(size * 1.1, GUIDE_C, 1.6, 1.2)  # (round the tape, not in its gap; a wider light: found from across the store)
 	cam.add_child(_hand)
 	_focus.dof_blur_far_enabled = true
 	_focus.dof_blur_far_distance = 0.6
@@ -372,6 +361,34 @@ func _cell(p: Vector3) -> Vector3i:
 	return Vector3i((p / CELL).floor())
 
 
+func _marker(box: Vector3, c: Color, reach: float, energy: float) -> MeshInstance3D:  # a glowing box on a shelf slot, pulsing (_process)
+	var mi := MeshInstance3D.new()
+	var mesh := BoxMesh.new()
+	mesh.size = box
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mesh.material = m
+	mi.mesh = mesh
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.visible = false
+	mi.set_meta("c", c)
+	var glow := OmniLight3D.new()  # (a little of it on the tapes either side: seen from down the aisle, not only head on)
+	glow.light_color = c
+	glow.omni_range = reach
+	glow.light_energy = energy
+	glow.position.z = size.z  # (out of the slot, in front of the shelf)
+	mi.add_child(glow)
+	add_child(mi)
+	return mi
+
+
+func guide(t) -> void:  # light that tape's slot (null: stop)
+	sought = t
+	if t != null:
+		hud.toast("%s: the %s shelf, lit up" % [t.t, t.c])
+
+
 func _wire_box() -> ArrayMesh:  # the highlight: the tape's edges, in yellow
 	var h := size / 2.0
 	var pts := PackedVector3Array()
@@ -522,12 +539,16 @@ func _process(dt: float) -> void:
 	_saver_tick(dt)
 	_focus.dof_blur_amount = move_toward(_focus.dof_blur_amount, FOCUS_BLUR if held != null and inspecting else 0.0, dt * FOCUS_BLUR * 4.0)
 	_focus.dof_blur_far_enabled = _focus.dof_blur_amount > 0.0
-	_home.visible = held != null
-	if _home.visible:
-		_home.transform = held.xf
-		_home_t += dt
-		var k := 0.5 + 0.5 * sin(_home_t * TAU * 0.8)  # (a slow pulse)
-		(_home.mesh.material as StandardMaterial3D).albedo_color = Color(HOME_C * (1.2 + 1.3 * k), 0.35 + 0.35 * k)  # (past white at the top: it blooms)
+	_home_t += dt
+	var k := 0.5 + 0.5 * sin(_home_t * TAU * 0.8)  # (a slow pulse)
+	if sought != null and (sought.get("off", false) or sought == held):
+		sought = null  # (found: taken off the shelf)
+	for pair: Array in [[_home, held], [_guide, sought]]:
+		var mi: MeshInstance3D = pair[0]
+		mi.visible = pair[1] != null
+		if mi.visible:
+			mi.transform = pair[1].xf
+			(mi.mesh.material as StandardMaterial3D).albedo_color = Color(mi.get_meta("c") * (1.2 + 1.3 * k), 0.35 + 0.35 * k)  # (past white at the top: it blooms)
 	if hovered != _dwell.on:
 		_dwell = { "on": hovered, "t": 0.0 }
 	elif hovered != null and _dwell.t < DWELL:
