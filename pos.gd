@@ -90,8 +90,12 @@ func _status(t: Dictionary) -> String:
 	return "OFF THE SHELF" if t.get("off", false) else "ON SHELF"
 
 
+func _all() -> Array:  # each title once (the store's extra copies aren't titles of their own)
+	return tapes.tapes.filter(func(t: Dictionary) -> bool: return not t.has("copy"))
+
+
 func _on_shelf() -> int:
-	return tapes.tapes.filter(func(t: Dictionary) -> bool: return not t.get("off", false)).size()
+	return _all().filter(func(t: Dictionary) -> bool: return not t.get("off", false)).size()
 
 
 func _year(t: Dictionary) -> String:
@@ -105,7 +109,7 @@ func _hm(secs: float) -> String:
 func _sections() -> Array:  # the store's, in its order, those with tapes on them
 	var out: Array = []
 	for s: String in Library.shelves("movie") + Library.shelves("series"):
-		if not s in out and tapes.tapes.any(func(t: Dictionary) -> bool: return t.c == s):
+		if not s in out and _all().any(func(t: Dictionary) -> bool: return t.c == s):
 			out.append(s)
 	return out
 
@@ -191,13 +195,13 @@ func _titles(title: String, items: Array, empty := "NO RECORDS FOUND.") -> Dicti
 
 
 func _find(q: String) -> Array:
-	var out: Array = tapes.tapes.filter(func(t: Dictionary) -> bool: return q in t.t.to_upper())
+	var out: Array = _all().filter(func(t: Dictionary) -> bool: return q in t.t.to_upper())
 	out.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return str(a.get("sort", a.t)).naturalnocasecmp_to(str(b.get("sort", b.t))) < 0)
 	return out
 
 
 func _title_detail(t: Dictionary) -> void:
-	var on: Array = tapes.tapes.filter(func(x: Dictionary) -> bool: return x.c == t.c)  # (its shelf, in the store's order: A to Z)
+	var on: Array = _all().filter(func(x: Dictionary) -> bool: return x.c == t.c)  # (its shelf, in the store's order: A to Z)
 	var nth := on.find(t) + 1
 	var series: bool = t.get("kind", "movie") == "series"
 	var eps: Array = t.get("e", [])
@@ -290,22 +294,22 @@ func _pick(key: String) -> bool:  # a menu selection. -> false if there's no suc
 			var names := _sections()
 			_go(_list("SECTIONS", "      %s%s%s" % [L("SECTION", 36), L("KIND", 12), "TITLES  ON SHELF"], names,
 				func(c: String, n: int) -> String:
-					var on: Array = tapes.tapes.filter(func(t: Dictionary) -> bool: return t.c == c)
+					var on: Array = _all().filter(func(t: Dictionary) -> bool: return t.c == c)
 					var kinds := { "movie": 0, "series": 0 }
 					for t: Dictionary in on:
 						kinds[t.get("kind", "movie")] += 1
 					var kind := "MOVIES" if kinds.series == 0 else "TV" if kinds.movie == 0 else "BOTH"
 					return " %s  %s %s %s  %s" % [R(n, 3), L(c.to_upper(), 35), L(kind, 10), R(on.size(), 7), R(on.filter(func(t: Dictionary) -> bool: return not t.get("off", false)).size(), 8)],
-				func(c: String) -> void: _go(_titles(c.to_upper(), tapes.tapes.filter(func(t: Dictionary) -> bool: return t.c == c)))))
+				func(c: String) -> void: _go(_titles(c.to_upper(), _all().filter(func(t: Dictionary) -> bool: return t.c == c)))))
 		"3": _go(_info("WHAT'S IN THE VCR", _vcr))
 		"4": _go(_titles("TAPES YOU'RE CARRYING", tapes.inv.duplicate(), "YOU'RE NOT CARRYING ANY."))
 		"5":
-			var fresh: Array = tapes.tapes.filter(func(t: Dictionary) -> bool: return str(t.get("added", "")) != "")
+			var fresh: Array = _all().filter(func(t: Dictionary) -> bool: return str(t.get("added", "")) != "")
 			fresh.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return str(a.added) > str(b.added))
 			_go(_list("NEW ARRIVALS", "      %s%s%s" % [L("TITLE", 34), L("SECTION", 19), "ADDED"], fresh.slice(0, 100),
 				func(t: Dictionary, n: int) -> String: return " %s  %s %s %s" % [R(n, 3), L(t.t.to_upper(), 33), L(t.c.to_upper(), 18), _day(t.added)], _title_detail))
 		"6":
-			var pool: Array = tapes.tapes.filter(func(t: Dictionary) -> bool: return not t.get("seen", false) and _status(t) == "ON SHELF")
+			var pool: Array = _all().filter(func(t: Dictionary) -> bool: return not t.get("seen", false) and _status(t) == "ON SHELF")
 			if pool.is_empty():
 				_msg = "NOTHING ON THE SHELF YOU HAVEN'T SEEN."
 			else:
@@ -331,7 +335,7 @@ func _main_menu() -> Dictionary:
 			var out: Array = [""]
 			for i in left.size():
 				out.append(L(left[i], 40) + (right[i] if i < right.size() else ""))
-			out.append_array(["", " %d TITLES · %d ON SHELF · %d SECTIONS · %s" % [tapes.tapes.size(), _on_shelf(), _sections().size(), _library()]])
+			out.append_array(["", " %d TITLES · %d ON SHELF · %d SECTIONS · %s" % [_all().size(), _on_shelf(), _sections().size(), _library()]])
 			return out,
 		"submit": func(v: String) -> void:
 			var cmd := v.get_slice(" ", 0)
@@ -463,7 +467,7 @@ func _process(dt: float) -> void:
 		_login += dt
 		if _login >= 1.25:
 			_login = -1.0
-			_msg = "BADGE ACCEPTED. WELCOME BACK. %d TITLES ON FILE." % tapes.tapes.size()
+			_msg = "BADGE ACCEPTED. WELCOME BACK. %d TITLES ON FILE." % _all().size()
 	var vp := get_viewport().get_visible_rect().size  # 80 x 30 cells, twice as tall as wide: the monitor's 4:3, as big as the window has room for
 	var h := maxi(12, int(minf(vp.y * 0.92 / ROWS, vp.x * 0.92 / COLS * 2.0)) / 2 * 2)
 	_cell = Vector2(h / 2.0, h)
@@ -565,7 +569,7 @@ func _logo(r0: int, c0: int) -> void:  # VAULTBUSTER in 5x7 pixel letters with a
 func _status_bar(r: int) -> void:  # where, when, what's on file: split by bars
 	var c := 2
 	for part: Array in [["TERM 01", P.hi], ["%s %s" % [Clock.weekday(), _date()], P.yel], [Clock.fmt_clock(Clock.h), P.yel],
-			["%d TITLES" % tapes.tapes.size(), P.hi], ["%d ON SHELF" % _on_shelf(), P.grn], [_library(), P.gray if Library.demo else P.cyan]]:
+			["%d TITLES" % _all().size(), P.hi], ["%d ON SHELF" % _on_shelf(), P.grn], [_library(), P.gray if Library.demo else P.cyan]]:
 		if c > 2:
 			_put(r, c, "│", P.dcyan)
 			c += 2
@@ -659,7 +663,7 @@ func _login_screen() -> void:  # what the monitor shows till you're in
 	_rule(20, 0, COLS - 1, "mid", P.dcyan)
 	var on := _on_shelf()
 	var p = tapes.playing
-	var rows := [[21, 2, "TITLES.....", R(tapes.tapes.size(), 5), P.hi], [22, 2, "ON SHELF...", R(on, 5), P.grn], [23, 2, "OFF SHELF..", R(tapes.tapes.size() - on, 5), P.red if tapes.tapes.size() > on else P.hi],
+	var rows := [[21, 2, "TITLES.....", R(_all().size(), 5), P.hi], [22, 2, "ON SHELF...", R(on, 5), P.grn], [23, 2, "OFF SHELF..", R(_all().size() - on, 5), P.red if _all().size() > on else P.hi],
 		[24, 2, "CARRYING...", R(tapes.inv.size(), 5), P.hi], [21, 24, "VCR.......", p.tape.t.to_upper().left(30) if p != null else "EMPTY", P.hi if p != null else P.gray],
 		[22, 24, "LIBRARY...", _library(), P.gray if Library.demo else P.cyan]]
 	for f: Array in rows:

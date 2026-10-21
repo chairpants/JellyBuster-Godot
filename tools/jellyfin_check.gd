@@ -41,7 +41,12 @@ func _init() -> void:
 		var d: Dictionary = J.demo_library(n)
 		var lib: Array = J.build(d.shows, d.eps, sections)
 		var p: Dictionary = S.plan(lib, cfg)
-		assert(p.wall.size() + p.kids.size() + p.classics.size() + p.tv.size() == lib.size())  # everything somewhere
+		var firsts := func(a: Array) -> int: return a.filter(func(t: Dictionary) -> bool: return not t.has("copy")).size()
+		assert(firsts.call(p.wall) + firsts.call(p.kids) + firsts.call(p.classics) + firsts.call(p.tv) == lib.size())  # everything somewhere, once (and maybe a copy or two besides)
+		for a: String in ["wall", "kids", "classics", "tv"]:  # each copy right after its title
+			for i in p[a].size():
+				if p[a][i].has("copy"):
+					assert(p[a][i - 1].id == p[a][i].id and p[a][i - 1].get("copy", 1) == p[a][i].copy - 1)
 		assert(p.wall.all(func(t: Dictionary) -> bool: return t.kind == "movie" and t.year >= cfg.new_from))
 		assert(p.tv.all(func(t: Dictionary) -> bool: return t.kind == "series" or t.year < cfg.new_from))
 		assert(p.classics.all(func(t: Dictionary) -> bool: return t.kind == "movie" and t.year < cfg.new_from))
@@ -52,7 +57,7 @@ func _init() -> void:
 			var laid: Array = S.lay(p[a], r[a])
 			assert(laid.reduce(func(acc: int, b: Array) -> int: return acc + b[1].filter(func(t) -> bool: return t != null).size(), 0) == p[a].size())
 		if n <= 300:
-			assert(p.k < 0)  # (a small library: smaller than VaultBuster's store)
+			assert(p.k == S.MIN_K)  # (a small library: VaultBuster's store all the same, made up with copies)
 	var cues: Array = J.srt("2\r\n00:00:20,654 --> 00:00:23,726\r\n<font size=\"52\">[BUZZING]</font>\r\n\r\n1\n00:00:07,430 --> 00:00:11,730\n{\\an8}Two\nlines\n\n3\n00:01:00,000 --> 00:01:01,000\n<i></i>\n")  # subtitles: in order, markup gone, empty ones dropped
 	assert(cues.size() == 2 and cues[0] == [7.43, 11.73, "Two\nlines"] and cues[1][2] == "[BUZZING]", str(cues))
 	print("jellyfin_check: ok")

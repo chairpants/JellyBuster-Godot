@@ -9,18 +9,22 @@ extends Node3D
 ## a fresh shelf, under a strip with its name. Spare bays
 ## stand empty at the end of their block. The store's as deep as the library needs (Level.dz, set by plan() before the
 ## level loads): a band more or less in the centre, the side walls' runs longer or shorter with it.
-## Different here: one copy of everything (no extra copies of the hits); no rides (a small section takes a bay of its
+## The store's never smaller than VaultBuster's: what room's left over goes to extra copies, beside the one they copy (the
+## new releases' newest first, then the rest by what came in last), a few at most.
+## Different here: no rides (a small section takes a bay of its
 ## own); no Staff Picks, MonsterVision or candy aisle; the hanging signs go over their shelves (_hang_signs).
 
 const TAPE := Vector3(0.105, 0.192, 0.032)  # the tape box as tapes.gd draws it: cover across, up, thickness
-const SLOT_W := 0.13
+const SLOT_W := 0.112  # (a 10.5 cm box: packed, a finger's gap between)
 const LEAN := PI * 10.0 / 180.0  # tapes tip back against each shelf's backing board
-const BAY := { "len": 1.6, "rows": 4, "per_row": 11, "depth": 0.55, "top": 0.25, "h": 2.0, "board_y": [0.18, 0.63, 1.08, 1.53] }
-const SHORT := { "len": 1.6, "rows": 3, "per_row": 11, "depth": 0.55, "top": 0.25, "h": 1.5, "board_y": [0.18, 0.63, 1.08] }  # centre and kids: low enough to see across the store
+const BAY := { "len": 1.6, "rows": 4, "per_row": 13, "depth": 0.55, "top": 0.25, "h": 2.0, "board_y": [0.18, 0.63, 1.08, 1.53] }
+const SHORT := { "len": 1.6, "rows": 3, "per_row": 13, "depth": 0.55, "top": 0.25, "h": 1.5, "board_y": [0.18, 0.63, 1.08] }  # centre and kids: low enough to see across the store
 const WALL_L := -7.74
 const STORE_X := 11.0
 const STORE_Z := 28.0
 const CENTER := { "corridor": 0.9, "west": 3, "east": 4, "z0": 8.6, "gap": 2.0, "bands": 4 }
+const MIN_K := 0  # bands added at the least: VaultBuster's own store, a small library's room made up with copies
+const COPIES := { "wall": 4, "other": 3 }  # the most of any one title (the new releases' walls, everywhere else)
 const BAND_STEP := 2 * 0.55 + 2.0  # a band and the aisle behind it: what dz comes in steps of
 const STRIPE := 0.02  # how far the side walls' blue stripe stands off them (the back wall's is flat)
 const KIDS := { "z": 4.2, "bays": 3 }  # one gondola out from the east wall, centred front to back on the kids' carpet (z 0.1 to 8.3)
@@ -76,7 +80,7 @@ static func plan(items: Array, cfg: Dictionary) -> Dictionary:  # who goes where
 	var wall := rest.filter(func(t: Dictionary) -> bool: return t.kind == "movie" and t.year >= cfg.new_from)
 	var classics := rest.filter(func(t: Dictionary) -> bool: return t.kind == "movie" and t.year < cfg.new_from)
 	var tv := rest.filter(func(t: Dictionary) -> bool: return t.kind != "movie")
-	var k := 1 - CENTER.bands  # bands added (fewer, below 0: the store shallower): till the walls hold the new releases, and the middle the rest
+	var k := MIN_K  # bands added (fewer, below 0: the store shallower): till the walls hold the new releases, and the middle the rest
 	while true:
 		var west_cap: int = (CENTER.bands + k) * 2 * CENTER.west
 		var west := []  # the older movies west of the walkway, a whole section at a time; what doesn't fit goes on east, ahead of the TV
@@ -89,9 +93,44 @@ static func plan(items: Array, cfg: Dictionary) -> Dictionary:  # who goes where
 			i += sec.size()
 		var east := classics.slice(i) + tv
 		if bays_for(wall, BAY) <= wall_bays(k) and bays_for(east, SHORT) <= (CENTER.bands + k) * 2 * CENTER.east:
-			return { "k": k, "dz": k * BAND_STEP, "kids": kids, "wall": wall, "classics": west, "tv": east }
+			var newest := func(a: Dictionary, b: Dictionary) -> bool: return [a.year, str(a.get("added", ""))] > [b.year, str(b.get("added", ""))]
+			var latest := func(a: Dictionary, b: Dictionary) -> bool: return str(a.get("added", "")) > str(b.get("added", ""))
+			return { "k": k, "dz": k * BAND_STEP,
+				"kids": copies(kids, SHORT, kids_cap, latest, COPIES.other), "wall": copies(wall, BAY, wall_bays(k) - 1, newest, COPIES.wall),  # (a bay of the wall kept for the candy)
+				"classics": copies(west, SHORT, west_cap, latest, COPIES.other), "tv": copies(east, SHORT, (CENTER.bands + k) * 2 * CENTER.east, latest, COPIES.other) }
 		k += 1
 	return {}
+
+
+static func copies(list: Array, spec: Dictionary, bays: int, first: Callable, most: int) -> Array:  # the block's spare room, filled: a second copy of each title in turn (first's order), then a third...; each beside its original
+	var count := {}  # section -> tapes in it
+	for t: Dictionary in list:
+		count[t.c] = count.get(t.c, 0) + 1
+	var shelves := 0
+	for c: String in count:
+		shelves += ceili(float(count[c]) / spec.per_row)
+	var room: int = bays * spec.rows
+	var ranked: Array = range(list.size())
+	ranked.sort_custom(func(i: int, j: int) -> bool: return first.call(list[i], list[j]))
+	var extra := {}  # its place in list -> copies past the first
+	for n in range(1, most):
+		for i: int in ranked:
+			var c: String = list[i].c
+			var fresh: bool = count[c] % spec.per_row == 0  # (this one starts a shelf)
+			if fresh and shelves >= room:
+				continue
+			shelves += 1 if fresh else 0
+			count[c] += 1
+			extra[i] = n
+	var out := []
+	for i in list.size():
+		var t: Dictionary = list[i]
+		out.append(t)
+		for n in extra.get(i, 0):
+			var c := t.duplicate()
+			c.copy = n + 2  # (the original is the first)
+			out.append(c)
+	return out
 
 
 static func walkway() -> float:  # the centre walkway's middle: where the aisles between the bands' ends and the wall shelves come out the same width
@@ -167,7 +206,7 @@ func _ready() -> void:
 	if room != null:
 		room.light(self)
 	_bake_texts()
-	var placed := ["wall", "kids", "classics", "tv"].map(func(a: String) -> String: return "%s %d/%d" % [a, slots.filter(func(t: Dictionary) -> bool: return t.a == a).size(), p[a].size()])
+	var placed := ["wall", "kids", "classics", "tv"].map(func(a: String) -> String: return "%s %d/%d (%d copies)" % [a, slots.filter(func(t: Dictionary) -> bool: return t.a == a).size(), p[a].size(), p[a].filter(func(t: Dictionary) -> bool: return t.has("copy")).size()])
 	print("store: %s; %d bays on the walls, %d bands in the middle; %.1f m deeper than VaultBuster's" % [", ".join(placed), wall_bays(p.k), CENTER.bands + p.k, p.dz])
 
 
@@ -243,7 +282,7 @@ func _bay(xf: Transform3D, spec: Dictionary, bay: Array, area: String) -> void:
 		var row: int = spec.rows - 1 - k / spec.per_row  # (row 0 is the bottom board)
 		var slot: int = k % spec.per_row
 		var c := _lean_at(row, spec)
-		var cover := Vector3(c.x, c.y, spec.len / 2.0 - 0.08 - (slot + 0.5) * SLOT_W)  # slot 0 on the shopper's left
+		var cover := Vector3(c.x, c.y, (spec.per_row / 2.0 - slot - 0.5) * SLOT_W)  # slot 0 on the shopper's left
 		var t: Dictionary = tapes[k].duplicate()
 		t.xf = xf * Transform3D(tilt, cover - n * (TAPE.z / 2.0 + 0.001))
 		t.a = area

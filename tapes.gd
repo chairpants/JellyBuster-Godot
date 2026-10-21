@@ -29,6 +29,7 @@ const RESUME := "user://vcr.cfg"  # what's in the VCR, and how far in: kept as i
 const RESUME_EVERY := 5.0
 const TELL_EVERY := 30.0  # seconds between telling Jellyfin how far in (jellyfin.gd's report)
 var _told_t := 0.0
+var _copies := {}  # id -> the store's extra copies of it (their covers come with the original's: _cover_worker)
 const TAPE_UNIFORMS := """uniform float scissor = 0.5;
 uniform sampler2DArray covers : source_color, filter_linear_mipmap_anisotropic;
 uniform vec3 size;
@@ -140,7 +141,7 @@ func _ready() -> void:
 			Library.played[playing.tape.e[playing.idx][2]] = true
 			if not playing.tape.get("seen", false) and playing.tape.e.all(func(ep: Array) -> bool: return Library.played.has(ep[2])):
 				playing.tape.seen = true
-				recover(playing.tape, false)  # (its sticker on)
+				recover(playing.tape, false)  # (its sticker on, every copy's)
 		step_episode(1))
 	video.failed.connect(func(why: String) -> void: hud.toast("⚠ " + why))
 	stock.call_deferred($"../Store")  # (once the store's built its shelves)
@@ -162,6 +163,10 @@ func stock(store: Node) -> void:  # the store's tapes onto its shelves (store.gd
 		video.stop()
 		playing = null
 	tapes = store.slots
+	_copies.clear()
+	for t: Dictionary in tapes:
+		if t.has("copy"):
+			_copies.get_or_add(t.id, []).append(t)
 	screens = Level.data().screens.filter(func(sc: Dictionary) -> bool: return sc.kind in ["theater", "tv"])
 	var colours := {}  # a colour per section, till the covers come
 	var mat := ShaderMaterial.new()
@@ -181,9 +186,14 @@ func stock(store: Node) -> void:  # the store's tapes onto its shelves (store.gd
 			mm.mesh = BoxMesh.new()
 			mm.mesh.size = size
 			mm.instance_count = n
-			var images: Array[Image] = []
+			var images: Array[Image] = []  # a cover a title: a copy in the same chunk shares its original's (t.layer)
+			var layers := {}  # id -> its layer
 			for j in n:
-				var c: Color = colours.get_or_add(tapes[i + j].c, Color.from_hsv(colours.size() * 0.13, 0.45, 0.55))
+				var u: Dictionary = tapes[i + j]
+				u.layer = layers.get_or_add(u.id, layers.size())
+				if u.layer < images.size():
+					continue
+				var c: Color = colours.get_or_add(u.c, Color.from_hsv(colours.size() * 0.13, 0.45, 0.55))
 				var img := Image.create(COVER.x, COVER.y, false, Image.FORMAT_RGB8)
 				img.fill(c)
 				img.generate_mipmaps()
@@ -199,7 +209,7 @@ func stock(store: Node) -> void:  # the store's tapes onto its shelves (store.gd
 			_chunks.append({ "mm": mm, "tex": tex, "mi": mi })
 		var ch: Dictionary = _chunks[i / CHUNK]
 		ch.mm.set_instance_transform(i % CHUNK, t.xf)
-		ch.mm.set_instance_custom_data(i % CHUNK, Color(i % CHUNK, 0, 0, 0))
+		ch.mm.set_instance_custom_data(i % CHUNK, Color(t.layer, 0, 0, 0))
 	for sc: Dictionary in screens + Level.data().get("minis", []):  # the picture, a hair in front of each screen (the theater's, and the CRTs over the aisles)
 		var q := MeshInstance3D.new()
 		var quad := QuadMesh.new()
@@ -215,7 +225,7 @@ func stock(store: Node) -> void:  # the store's tapes onto its shelves (store.gd
 		add_child(q)
 		_quads.append(q)
 	_screens_show(false)
-	print("tapes: %d on the shelves in %d chunks" % [tapes.size(), _chunks.size()])
+	print("tapes: %d on the shelves in %d chunks, %d covers" % [tapes.size(), _chunks.size(), _chunks.reduce(func(a: int, ch: Dictionary) -> int: return a + ch.tex.get_layers(), 0)])
 	_resume()
 	_gen += 1
 	_next_cover = 0
@@ -278,6 +288,8 @@ func _cover_worker(gen: int) -> void:  # covers onto the shelf, the next one not
 	while gen == _gen and _next_cover < tapes.size():
 		var t: Dictionary = tapes[_next_cover]
 		_next_cover += 1
+		if t.has("copy"):
+			continue
 		var path: String = Library.cover_path(t.cover)
 		var img: Image = null if FileAccess.file_exists(path) else await Library.cover(t.cover)  # (fetched if it isn't kept yet)
 		var shelf := [img]
@@ -297,7 +309,8 @@ func _cover_worker(gen: int) -> void:  # covers onto the shelf, the next one not
 		if gen != _gen:
 			return
 		if shelf[0] != null:
-			_chunks[t.i / CHUNK].tex.update_layer(shelf[0], t.i % CHUNK)
+			for c: Dictionary in [t] + _copies.get(t.id, []):
+				_chunks[c.i / CHUNK].tex.update_layer(shelf[0], c.layer)
 		n += 1
 
 
@@ -587,16 +600,18 @@ func recover(t: Dictionary, say := true) -> void:  # its cover's been changed on
 	var img: Image = await Library.cover(t.cover)
 	if img == null:
 		return
-	if held == t:
-		var m: StandardMaterial3D = _hand_cover.material_override
-		m.albedo_texture = _mipped(_stickered(img.duplicate(), t))
-		m.albedo_color = Color.WHITE
 	var im := img.duplicate()  # (as _cover_worker does it, here on the main thread: it's only the one)
 	im.resize(COVER.x, COVER.y, Image.INTERPOLATE_LANCZOS)
 	_stickered(im, t)
 	im.convert(Image.FORMAT_RGB8)
 	im.generate_mipmaps()
-	_chunks[t.i / CHUNK].tex.update_layer(im, t.i % CHUNK)
+	for c: Dictionary in tapes.filter(func(x: Dictionary) -> bool: return x.id == t.id):  # (it, and its copies)
+		c.seen = t.get("seen", false)
+		if held == c:
+			var m: StandardMaterial3D = _hand_cover.material_override
+			m.albedo_texture = _mipped(_stickered(img.duplicate(), c))
+			m.albedo_color = Color.WHITE
+		_chunks[c.i / CHUNK].tex.update_layer(im, c.layer)
 	if say:
 		hud.toast("New cover: %s" % t.t)
 
@@ -721,6 +736,9 @@ func _resume_save() -> void:  # (nothing in the machine: nothing to pick up next
 
 
 func _resume() -> void:  # what was in the VCR when the game last closed: off its shelf and back in, from where it was
+	var args := OS.get_cmdline_user_args()
+	if "--shot" in args or "--snapshot" in args:  # (the same views every time, the VCR left as it was: as save.gd does)
+		return
 	var cf := ConfigFile.new()
 	if cf.load(RESUME) != OK:
 		return

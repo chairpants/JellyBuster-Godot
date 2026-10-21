@@ -59,12 +59,12 @@ func save() -> void:
 	cf.set_value("lights", "zones", lights.zone_on)
 	cf.set_value("lights", "lamps", lights.lamps.map(func(l: Dictionary) -> bool: return l.on))
 	cf.set_value("doors", "open", interact.doors.map(func(d: Dictionary) -> bool: return d.get("open", false)))
-	cf.set_value("hands", "inv", tapes.inv.map(func(t: Dictionary) -> String: return t.id))
+	cf.set_value("hands", "inv", tapes.inv.map(_key))
 	cf.set_value("hands", "sel", tapes.inv_sel)
 	var wound := {}  # tape id -> [episode, seconds in]: only the ones that have been played
 	for t: Dictionary in tapes.tapes:
 		if t.get("at", 0.0) > 0.0 or t.get("ep", 0) > 0:
-			wound[t.id] = [t.get("ep", 0), t.get("at", 0.0)]
+			wound[_key(t)] = [t.get("ep", 0), t.get("at", 0.0)]
 	cf.set_value("hands", "wound", wound)
 	cf.set_value("doors", "locked", main.get_node("Things").locked)
 	cf.set_value("screen", "muted", main.get_node("Ambience").muted)
@@ -73,6 +73,10 @@ func save() -> void:
 	cf.set_value("screen", "audio", tapes.audio_lang)
 	cf.save(FILE)
 	tapes._resume_save()  # (and the VCR, to the second)
+
+
+static func _key(t: Dictionary) -> String:  # a tape's id, and which copy (the store has a few of some)
+	return t.id + ("#%d" % t.copy if t.has("copy") else "")
 
 
 func _load() -> void:
@@ -104,7 +108,7 @@ func _load() -> void:
 	main.get_node("Things").set_locked(cf.get_value("doors", "locked", false))
 	var by_id := {}
 	for t: Dictionary in tapes.tapes:
-		by_id[t.id] = t
+		by_id[_key(t)] = t
 	var wound: Dictionary = cf.get_value("hands", "wound", {})
 	for id: String in wound:
 		if by_id.has(id) and not (tapes.playing != null and tapes.playing.tape == by_id[id]):  # (the one in the VCR: vcr.cfg has it, to the second)

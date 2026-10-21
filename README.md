@@ -5,7 +5,9 @@ season of a show is a tape; pick one up, carry it to the theater in back, and it
 
 The store is VaultBuster's (the web game), its shelves laid out the way VaultBuster lays them out: new releases round
 the outer walls, kids' titles in the front corner by the windows, older movies and TV on the low shelving in the
-middle, a section at a time, A to Z. A bigger library makes a deeper store.
+middle, a section at a time, A to Z. A bigger library makes a deeper store; a smaller one still gets VaultBuster's
+whole store, the spare shelf space stocked with extra copies beside the originals (the newest releases most), the way a
+rental store has a few of the hits.
 
 ## Running it
 
