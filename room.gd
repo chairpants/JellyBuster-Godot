@@ -133,16 +133,6 @@ var _fancy := true
 
 
 func _enter_tree() -> void:  # (before anything's _ready: tapes.gd keeps hold of the materials it finds)
-	var RS := RenderingServer
-	for n in ["uZone", "uBoh", "uFloorBox", "uBohBox", "uLobbyBox", "uThBox"]:
-		_add(n, RS.GLOBAL_VAR_TYPE_VEC4, Vector4(1, 1, 1, 1))
-	for n in ["uBohSplit", "uThLight"]:
-		_add(n, RS.GLOBAL_VAR_TYPE_VEC2, Vector2(1, 1))
-	_add("uThSconce", RS.GLOBAL_VAR_TYPE_FLOAT, 1.0)
-	_add("uSunReal", RS.GLOBAL_VAR_TYPE_FLOAT, 1.0)
-	_add("uFog", RS.GLOBAL_VAR_TYPE_VEC4, Vector4.ZERO)
-	_add("uVid", RS.GLOBAL_VAR_TYPE_VEC4, Vector4.ZERO)
-	_add("uVidAt", RS.GLOBAL_VAR_TYPE_VEC3, Vector3.ZERO)
 	var fixed := {  # lin(colour, k), as the web game sets them
 		"uInSky": _lin(0xdfe8ff, 1.15), "uInGround": _lin(0x223355, 1.15), "uInAmb": _lin(0xffffff, 0.32), "uInDirC": _lin(0xffffff, 0.55),
 		"uInDir": Vector3(3, 10, -6).normalized(),
@@ -151,11 +141,11 @@ func _enter_tree() -> void:  # (before anything's _ready: tapes.gd keeps hold of
 		"uDayC": Vector3.ONE, "uNightC": Vector3(0.035, 0.045, 0.08),  # (night: moonlight + the lot lights through the glass)
 	}
 	for n: String in fixed:
-		_add(n, RS.GLOBAL_VAR_TYPE_VEC3, fixed[n])
+		glob(n, fixed[n])
 	var b: Dictionary = Level.data().lights.boxes
 	for pair in [["uFloorBox", b.floor], ["uBohBox", b.boh], ["uLobbyBox", b.lobby], ["uThBox", b.theater]]:
-		RS.global_shader_parameter_set(pair[0], Vector4(pair[1][0], pair[1][1], pair[1][2], pair[1][3]))
-	RS.global_shader_parameter_set("uBohSplit", Vector2(b.bohSplit[0], b.bohSplit[1]))
+		glob(pair[0], Vector4(pair[1][0], pair[1][1], pair[1][2], pair[1][3]))
+	glob("uBohSplit", Vector2(b.bohSplit[0], b.bohSplit[1]))
 	var swapped := light($"../World")
 	print("room light: %d surfaces, %d materials, %d shaders" % [swapped, _made.size(), _shaders.size()])
 	_moon_c = fixed.uMoonC
@@ -202,13 +192,12 @@ func fancy(on: bool) -> void:  # the costly part: contact shadows, bounce, bloom
 	lights.fancy(on)
 
 
-static var _added := {}  # the globals made so far (kept here: asking the engine for its list is an editor-only call, and an error a time in the game)
+static var globals := {}  # the shader globals as last set (the engine only says what they are in the editor): tools/snapshot.gd keeps them
 
 
-func _add(n: String, type: int, value: Variant) -> void:  # (once: a fresh store, F9, comes through here again)
-	if not _added.has(n):
-		_added[n] = true
-		RenderingServer.global_shader_parameter_add(n, type, value)
+static func glob(n: String, v: Variant) -> void:  # a shader global (they're the project's: Project Settings > Shader Globals, there in the editor too)
+	globals[n] = v
+	RenderingServer.global_shader_parameter_set(n, v)
 
 
 func light(root: Node) -> int:  # everything lit under there, onto the room's light (the level; the cast of people)
@@ -273,18 +262,17 @@ func _room_material(m: StandardMaterial3D, has_colors: bool) -> ShaderMaterial:
 
 
 func _process(_dt: float) -> void:  # applyLighting: the switches' levels and the day, into the materials
-	var RS := RenderingServer
 	var z: Dictionary = lights.zone_lvl
-	RS.global_shader_parameter_set("uZone", Vector4(z.front, z.aisles, z.lounge, sky.level))
-	RS.global_shader_parameter_set("uBoh", Vector4(z.hall, z.breakroom, z.restroom, z.closet))
-	RS.global_shader_parameter_set("uThLight", Vector2(z.lobby, z.theater))
-	RS.global_shader_parameter_set("uSunDir", sky.sun_dir)
-	RS.global_shader_parameter_set("uSunC", Vector3(sky.sun_c.r, sky.sun_c.g, sky.sun_c.b))
-	RS.global_shader_parameter_set("uDayC", sky.day_c)
+	glob("uZone", Vector4(z.front, z.aisles, z.lounge, sky.level))
+	glob("uBoh", Vector4(z.hall, z.breakroom, z.restroom, z.closet))
+	glob("uThLight", Vector2(z.lobby, z.theater))
+	glob("uSunDir", sky.sun_dir)
+	glob("uSunC", Vector3(sky.sun_c.r, sky.sun_c.g, sky.sun_c.b))
+	glob("uDayC", sky.day_c)
 	# the stronger of the sun and the moon is the real light; its shadows fade out and back in as they change places at dusk and dawn
 	var day: float = sky.level
 	var real := day >= 0.5
-	RS.global_shader_parameter_set("uSunReal", 1.0 if real else 0.0)
+	glob("uSunReal", 1.0 if real else 0.0)
 	var c: Vector3 = Vector3(sky.sun_c.r, sky.sun_c.g, sky.sun_c.b) * day if real else _moon_c * (1.0 - day)
 	var top := maxf(maxf(c.x, c.y), maxf(c.z, 0.0001))
 	sun.light_color = Color(c.x / top, c.y / top, c.z / top).linear_to_srgb()

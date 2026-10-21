@@ -38,10 +38,11 @@ var climb = null  # on a ladder: { dir (1 up, -1 down), L (the ladder's climb), 
 
 func _ready() -> void:
 	var args := OS.get_cmdline_user_args()
-	if not "--shot" in args:  # (not for --shot: it'd take the mouse off whoever's at the machine)
+	if not ("--shot" in args or "--snapshot" in args):  # (not for --shot: it'd take the mouse off whoever's at the machine)
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 		return
 	# godot --path . -- --demo --shot [--at=x,y,z,yaw,pitch] (degrees) [--hour=h]: shot.png from there, a few seconds in, then quits
+	# (--snapshot instead: the whole store as built, as a scene for the editor: tools/snapshot.gd)
 	for a in args:
 		if a.begins_with("--hour="):
 			Clock.h = a.trim_prefix("--hour=").to_float()
@@ -56,7 +57,10 @@ func _ready() -> void:
 			$Shape.disabled = true
 	await get_tree().create_timer(1.0).timeout
 	await RenderingServer.frame_post_draw
-	get_viewport().get_texture().get_image().save_png("res://shot.png")
+	if "--snapshot" in args:
+		preload("res://tools/snapshot.gd").save(owner)
+	else:
+		get_viewport().get_texture().get_image().save_png("res://shot.png")
 	get_tree().quit()
 
 

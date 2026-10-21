@@ -159,7 +159,7 @@ func _ready() -> void:
 		var dir := Vector3(sin(sc.ry), 0, cos(sc.ry))
 		var theater: bool = sc.kind == "theater"
 		if sc.kind == "tv":
-			RenderingServer.global_shader_parameter_set("uVidAt", Vector3(sc.x, sc.y, sc.z) + dir)  # (the room's light: the picture's glow round the TV, room.gd)
+			preload("res://room.gd").glob("uVidAt", Vector3(sc.x, sc.y, sc.z) + dir)  # (the room's light: the picture's glow round the TV, room.gd)
 		g.position = Vector3(sc.x, sc.y, sc.z) + dir * (THEATER_GLOW.out if theater else 0.1)
 		g.basis = Basis.looking_at(dir)
 		g.spot_range = 24.0 if sc.kind == "tv" else 15.0
@@ -400,7 +400,7 @@ func _process(dt: float) -> void:  # fluorescents restriking, tube by tube (ligh
 			l.basis = Basis.looking_at((into * 0.8 + Vector3.DOWN * 0.6).normalized())
 			l.light_color = ZONE_TINT.get(p.a if la > lb else p.b, Color.WHITE)
 	_glow = _glow.lerp(video.tint, minf(1.0, dt * 6.0))  # the light chases the picture
-	RenderingServer.global_shader_parameter_set("uVid", Vector4(_glow.r, _glow.g, _glow.b, 1.0))  # (and lights the room it's in, as ambient: room.gd. Not made linear: a dark film's colour would be next to nothing)
+	preload("res://room.gd").glob("uVid", Vector4(_glow.r, _glow.g, _glow.b, 1.0))  # (and lights the room it's in, as ambient: room.gd. Not made linear: a dark film's colour would be next to nothing)
 	for g in _glows:
 		g.light_color = _glow
 		g.light_energy = g.get_meta("gain")

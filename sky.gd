@@ -163,7 +163,7 @@ func _sky(dt: float) -> void:  # wxSky.tick
 	var at := cam.global_position if cam != null else Vector3.ZERO
 	var inside := INDOORS.any(func(b: Array) -> bool: return at.x > b[0] and at.x < b[1] and at.z > b[2] and at.z < b[3] and at.y < b[4])
 	_inside += ((1.0 if inside else 0.0) - _inside) * minf(1.0, dt * 4.0)  # (eased through the doorway)
-	RenderingServer.global_shader_parameter_set("uFog", Vector4(fog_c.r, fog_c.g, fog_c.b, density * _inside))
+	preload("res://room.gd").glob("uFog", Vector4(fog_c.r, fog_c.g, fog_c.b, density * _inside))
 	env.fog_enabled = density * (1.0 - _inside) > 0.0005
 	env.fog_light_color = fog_c.linear_to_srgb()
 	env.fog_density = density * (1.0 - _inside)

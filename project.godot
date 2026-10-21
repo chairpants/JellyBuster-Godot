@@ -25,3 +25,118 @@ Library="*res://jellyfin.gd"
 
 window/size/viewport_width=1280
 window/size/viewport_height=720
+
+[shader_globals]
+
+uZone={
+"type": "vec4",
+"value": Vector4(1, 1, 1, 1)
+}
+uBoh={
+"type": "vec4",
+"value": Vector4(1, 1, 1, 1)
+}
+uFloorBox={
+"type": "vec4",
+"value": Vector4(1, 1, 1, 1)
+}
+uBohBox={
+"type": "vec4",
+"value": Vector4(1, 1, 1, 1)
+}
+uLobbyBox={
+"type": "vec4",
+"value": Vector4(1, 1, 1, 1)
+}
+uThBox={
+"type": "vec4",
+"value": Vector4(1, 1, 1, 1)
+}
+uBohSplit={
+"type": "vec2",
+"value": Vector2(1, 1)
+}
+uThLight={
+"type": "vec2",
+"value": Vector2(1, 1)
+}
+uThSconce={
+"type": "float",
+"value": 1.0
+}
+uSunReal={
+"type": "float",
+"value": 1.0
+}
+uFog={
+"type": "vec4",
+"value": Vector4(0, 0, 0, 0)
+}
+uVid={
+"type": "vec4",
+"value": Vector4(0, 0, 0, 0)
+}
+uVidAt={
+"type": "vec3",
+"value": Vector3(0, 0, 0)
+}
+uInSky={
+"type": "vec3",
+"value": Vector3(0.848597, 0.927995, 1.15)
+}
+uInGround={
+"type": "vec3",
+"value": Vector3(0.018395735, 0.038070478, 0.104467966)
+}
+uInAmb={
+"type": "vec3",
+"value": Vector3(0.32, 0.32, 0.32)
+}
+uInDirC={
+"type": "vec3",
+"value": Vector3(0.55, 0.55, 0.55)
+}
+uInDir={
+"type": "vec3",
+"value": Vector3(0.24913645, 0.8304548, -0.4982729)
+}
+uSunSky={
+"type": "vec3",
+"value": Vector3(0.31745076, 0.49378115, 0.684824)
+}
+uSunGround={
+"type": "vec3",
+"value": Vector3(0.054203883, 0.108096346, 0.03388965)
+}
+uSunC={
+"type": "vec3",
+"value": Vector3(0.95, 0.8514559, 0.6591782)
+}
+uSunDir={
+"type": "vec3",
+"value": Vector3(0.36050507, 0.9012627, -0.24033672)
+}
+uMoonSky={
+"type": "vec3",
+"value": Vector3(0.013852771, 0.025665797, 0.076137386)
+}
+uMoonGround={
+"type": "vec3",
+"value": Vector3(0.00083469925, 0.0011685789, 0.0026273238)
+}
+uMoonC={
+"type": "vec3",
+"value": Vector3(0.21163383, 0.26973975, 0.40347612)
+}
+uMoonDir={
+"type": "vec3",
+"value": Vector3(-0.44905022, 0.8339504, -0.32075015)
+}
+uDayC={
+"type": "vec3",
+"value": Vector3(1, 1, 1)
+}
+uNightC={
+"type": "vec3",
+"value": Vector3(0.035, 0.045, 0.08)
+}

@@ -5,3 +5,5 @@ video.png
 video.png.import
 build/
 __pycache__/
+shots/
+baked/

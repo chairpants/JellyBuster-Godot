@@ -53,3 +53,6 @@ movie's a new release, out on the walls. Edit it to taste.
 
 `godot --headless --path . --script tools/jellyfin_check.gd` checks the sections and the layout without a server.
 `godot --path . -- --demo --shot --at=x,y,z,yaw,pitch` saves `shot.png` from there.
+`tools/shots.sh <name>` takes the same seven views every time into `shots/<name>/`, to compare before and after a change.
+`godot --path . -- --demo --snapshot [--hour=h]` saves the store as the game built it to `baked/snapshot.scn`: open it in
+the editor to look round everything the scripts make (a still to look at: edits to it don't go back into the game).
