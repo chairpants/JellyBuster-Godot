@@ -455,9 +455,9 @@ func _process(dt: float) -> void:  # fluorescents restriking, tube by tube (ligh
 		n.light.light_energy = n.on * k * k
 		if n.sodium:
 			n.light.light_color = Color(1.0, 0.302, 0.102).lerp(Color(1.0, 0.682, 0.29), k)  # 0xff4d1a to 0xffae4a
-	# the theater: with a film on its screen the lights go down, slowly; when it stops they come back up. The step lights
+	# the theater: with a film on its screen the lights go down, slowly; when it stops, or it's paused, they come back up. The step lights
 	# are on whatever the switch says (they're how you find your seat), faint while it plays
-	var showing: bool = not video.url.is_empty() and video.audio.unit_size > 5.0  # (the theater's speakers: tapes.gd's _speaker)
+	var showing: bool = not video.url.is_empty() and not video.paused and video.audio.unit_size > 5.0  # (the theater's speakers: tapes.gd's _speaker. Paused: they come up)
 	house = move_toward(house, 0.0 if showing else 1.0, dt / HOUSE.fade)
 	var glow := lerpf(HOUSE.low, 1.0, house)  # (the sconces and the steps: never quite out)
 	preload("res://room.gd").glob("uThSconce", glow)
