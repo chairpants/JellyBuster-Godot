@@ -55,7 +55,7 @@ func _ready() -> void:
 		var to := _shelf.get_item_text(i)
 		if tape != null and to != tape.c:
 			Library.reclass(tape, to)
-			$"../HUD".toast("%s goes on the %s shelf next time the store opens" % [tape.t.get_slice(": Season", 0), to]))
+			$"../HUD".toast("%s goes on the %s shelf: restocking when you close this" % [tape.t.get_slice(": Season", 0), to]))
 	shelf_row.add_child(_shelf)
 	var scroll := ScrollContainer.new()
 	scroll.custom_minimum_size = Vector2(5 * (THUMB.x + 8) + 16, 2.2 * (THUMB.y + 30))
@@ -113,6 +113,17 @@ func _list(what: String, asking: Callable) -> void:  # asking: the call that fin
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		l.custom_minimum_size.x = THUMB.x
 		cell.add_child(l)
+		if im.has("Match"):  # (a search's: it can be what the tape is, not only how it looks)
+			var it := Button.new()
+			it.text = "IT'S THIS ONE"
+			it.add_theme_font_size_override("font_size", 11)
+			it.tooltip_text = "Jellyfin re-identifies the movie (or the whole series) as this: its title, details and cover"
+			it.pressed.connect(func() -> void:
+				if it.text == "IT'S THIS ONE":
+					it.text = "SURE? CLICK AGAIN"
+				else:
+					_identify(im.Match))
+			cell.add_child(it)
 		_grid.add_child(cell)
 		_thumb(b, im.get("ThumbnailUrl", "") if im.get("ThumbnailUrl") else im.Url)  # (they fill in as they come)
 
@@ -133,10 +144,25 @@ func _pick(image_url: String) -> void:
 		_title.text = Library.status
 
 
+func _identify(match: Dictionary) -> void:  # Jellyfin's Identify: it's this film (or series), not the one it matched; the server fetches its details and cover
+	var t: Dictionary = tape
+	_title.text = "Telling Jellyfin it's %s..." % match.get("Name", "that")
+	if not await Library.identify(t.cover[-1], match):
+		_title.text = Library.status
+		return
+	close()
+	$"../HUD".toast("Jellyfin has it as %s now: the new cover's on its way; its name changes when the store next opens" % match.get("Name", "that"))
+	await get_tree().create_timer(6.0).timeout  # (the server's fetching the new details and pictures)
+	$"../Tapes".recover(t)
+
+
 func close() -> void:
 	tape = null
 	_panel.visible = false
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	if Library.moved:  # (a tape put on another shelf: the store's laid out again, now)
+		$"../HUD".toast("Restocking the shelves...")
+		Library.restock()
 
 
 func _unhandled_input(e: InputEvent) -> void:

@@ -15,6 +15,8 @@ const RECLASS := "user://sections.cfg"  # the shelf you've put a movie or series
 
 var url := ""
 var key := ""
+var watch_as := ""  # whose watching it's kept as on the server (a user's name; "" whoever's used Jellyfin last)
+var user_id := ""  # theirs, once connected ("" in the demo: nothing's kept)
 var status := ""
 var demo := false
 var items: Array = []  # a tape each: { id, cover (item ids to try for its picture), t, sort, c (section), kind (movie / series), year, e (episodes, as video.gd plays them) }
@@ -31,6 +33,7 @@ func _ready() -> void:
 	cfg.load(CFG)
 	url = cfg.get_value("server", "url", "")
 	key = cfg.get_value("server", "api_key", "")
+	watch_as = cfg.get_value("server", "watch_as", "")
 	_start.call_deferred(url.is_empty() or key.is_empty())
 
 
@@ -62,10 +65,12 @@ func _start(ask: bool) -> void:  # (on the loading screen) connect, asking for t
 			var cfg := ConfigFile.new()
 			cfg.set_value("server", "url", url)
 			cfg.set_value("server", "api_key", key)
+			cfg.set_value("server", "watch_as", watch_as)
 			cfg.save(CFG)
 			demo = false
 			items = build(shows.Items, eps.Items, _sections())
-			status = "Jellyfin: %d tapes" % items.size()
+			var who: String = await _pick_user()
+			status = "Jellyfin: %d tapes%s" % [items.size(), " · watching as " + who if who else ""]
 			_open()
 			return
 		why = status
@@ -84,6 +89,9 @@ func shelves(kind: String) -> Array:  # the sections a movie (or a series) can g
 	return _sections().filter(func(s: Dictionary) -> bool: return s.get("for", kind) == kind).map(func(s: Dictionary) -> String: return s.name)
 
 
+var moved := false  # a tape's been put on another shelf since the store opened: covers.gd restocks when it's closed
+
+
 func reclass(t: Dictionary, section: String) -> void:  # onto another shelf, for good: a series with all its seasons (it moves when the store's next laid out)
 	var cf := ConfigFile.new()
 	cf.load(RECLASS)
@@ -92,6 +100,7 @@ func reclass(t: Dictionary, section: String) -> void:  # onto another shelf, for
 	for it: Dictionary in items:
 		if it.cover[-1] == t.cover[-1]:
 			it.c = section
+	moved = true
 
 
 func _sections() -> Array:
@@ -125,6 +134,10 @@ func _form(why: String) -> String:  # the settings, on the loading screen: "conn
 	api.text = key
 	api.secret = true
 	box.add_child(api)
+	var who := LineEdit.new()
+	who.placeholder_text = "Watch as (a Jellyfin user; blank: whoever used it last)"
+	who.text = watch_as
+	box.add_child(who)
 	var note := Label.new()
 	note.text = why
 	note.add_theme_color_override("font_color", Color(1, 0.5, 0.45))
@@ -154,13 +167,27 @@ func _form(why: String) -> String:  # the settings, on the loading screen: "conn
 	if not url.contains("://"):
 		url = "http://" + url
 	key = api.text.strip_edges()
+	watch_as = who.text.strip_edges()
 	box.queue_free()
 	return what
+
+
+func restock() -> void:  # the store laid out again round the library as it is now (a tape moved to another shelf), where you were in it kept
+	var main := get_tree().current_scene
+	if main != null and main.has_node("Save"):
+		main.get_node("Save").save()
+	var order := {}
+	var secs := _sections()
+	for i in secs.size():
+		order[secs[i].name] = i
+	items.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return order[a.c] < order[b.c] or (a.c == b.c and a.sort < b.sort))
+	_open()
 
 
 func _open() -> void:  # the store, laid out round the library, opens
 	plan = preload("res://store.gd").plan(items, JSON.parse_string(FileAccess.get_file_as_string("res://data/genres.json")))
 	get_node("/root/Level").set_depth(plan.dz)  # (by path: tools/jellyfin_check.gd loads this without the autoloads)
+	moved = false
 	get_tree().change_scene_to_file.call_deferred("res://main.tscn")
 
 
@@ -299,6 +326,38 @@ func details(t: Dictionary) -> Dictionary:  # what the back of a tape's box says
 	}
 
 
+func _pick_user() -> String:  # whose watching's kept: the one named in the settings, else whoever's used Jellyfin last
+	user_id = ""
+	var users = await _fetch("/Users")
+	if not users is Array or users.is_empty():
+		return ""
+	users.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return str(a.get("LastActivityDate", "")) > str(b.get("LastActivityDate", "")))
+	var pick: Dictionary = users[0]
+	for u: Dictionary in users:
+		if u.Name.to_lower() == watch_as.to_lower():
+			pick = u
+	user_id = pick.Id
+	return pick.Name
+
+
+func resume_at(id: String) -> float:  # where they left it, on the server (0: never started, or watched to the end)
+	if demo or user_id.is_empty():
+		return 0.0
+	var r = await _fetch("/UserItems/%s/UserData?userId=%s" % [id, user_id])
+	return 0.0 if not r is Dictionary or r.get("Played", false) else r.get("PlaybackPositionTicks", 0) / 10000000.0
+
+
+func report(id: String, at: float, played := false) -> void:  # how far they've got, onto the server: other Jellyfin apps pick it up from there
+	if demo or user_id.is_empty():
+		return
+	var http := HTTPRequest.new()
+	add_child(http)
+	var body := { "PlaybackPositionTicks": 0 if played else int(at * 10000000.0), "Played": played, "LastPlayedDate": Time.get_datetime_string_from_system(true) + "Z" }
+	http.request("%s/UserItems/%s/UserData?userId=%s" % [url, id, user_id], _auth() + PackedStringArray(["Content-Type: application/json"]), HTTPClient.METHOD_POST, JSON.stringify(body))
+	await http.request_completed
+	http.queue_free()
+
+
 func remote_covers(id: String) -> Array:  # the covers Jellyfin's providers (TMDb, Fanart...) have for it, as its Identify > Images shows: [{ Url, ThumbnailUrl, ProviderName, Width, Height, Language, CommunityRating }]
 	if demo or url.is_empty():
 		return []
@@ -326,7 +385,7 @@ func search_covers(term: String, kind: String) -> Array:  # Identify's search: t
 	for m: Dictionary in JSON.parse_string(r[3].get_string_from_utf8()):
 		if m.get("ImageUrl"):
 			out.append({ "Url": m.ImageUrl, "ThumbnailUrl": m.ImageUrl.replace("/t/p/original/", "/t/p/w342/"),  # (TMDb's: a small one to show)
-				"ProviderName": "%s %s" % [m.get("Name", ""), "(%d)" % m.ProductionYear if m.get("ProductionYear") else ""] })
+				"ProviderName": "%s %s" % [m.get("Name", ""), "(%d)" % m.ProductionYear if m.get("ProductionYear") else ""], "Match": m })
 	return out
 
 
@@ -340,6 +399,21 @@ func set_cover(id: String, image_url: String) -> bool:  # Jellyfin fetches that 
 		status = "Jellyfin wouldn't change the cover (%s)" % ("HTTP %d: is the key an admin's?" % r[1] if r[0] == HTTPRequest.RESULT_SUCCESS else "no answer")
 		return false
 	for f in DirAccess.get_files_at("user://covers720"):
+		if f.begins_with(id):
+			DirAccess.remove_absolute("user://covers720/" + f)
+	return true
+
+
+func identify(id: String, match: Dictionary) -> bool:  # Jellyfin's Identify: the item is this match (its ids, details and pictures fetched again); an admin's key
+	var http := HTTPRequest.new()
+	add_child(http)
+	http.request("%s/Items/RemoteSearch/Apply/%s?replaceAllImages=true" % [url, id], _auth() + PackedStringArray(["Content-Type: application/json"]), HTTPClient.METHOD_POST, JSON.stringify(match))
+	var r: Array = await http.request_completed
+	http.queue_free()
+	if r[0] != HTTPRequest.RESULT_SUCCESS or r[1] >= 300:
+		status = "Jellyfin wouldn't re-identify it (%s)" % ("HTTP %d: is the key an admin's?" % r[1] if r[0] == HTTPRequest.RESULT_SUCCESS else "no answer")
+		return false
+	for f in DirAccess.get_files_at("user://covers720"):  # (its old cover, and its seasons')
 		if f.begins_with(id):
 			DirAccess.remove_absolute("user://covers720/" + f)
 	return true

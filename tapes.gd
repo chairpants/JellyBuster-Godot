@@ -16,6 +16,7 @@ const REACH := 3.4
 const INV_MAX := 9
 const CELL := 0.25
 const CHUNK := 1024  # tapes per draw call (and per texture array)
+const SLEEVE_SHINE := 0.3  # (more, and the covers wash out grey seen from below)
 const FOCUS_BLUR := 0.1  # how soft the store goes behind a tape held up
 const GUIDE_C := Color(1.0, 0.75, 0.2)  # a tape asked for at the register: amber
 const HOME_C := Color(0.35, 1.0, 0.55)  # the gap the tape in hand goes back in
@@ -26,6 +27,8 @@ const SCRUB_HOLD := 0.25  # rewind / fast-forward: held this long before it star
 const SCRUB_WAIT := 0.5  # and after both keys are let go, this long before it plays from there
 const RESUME := "user://vcr.cfg"  # what's in the VCR, and how far in: kept as it plays, so the next start picks it up (_resume)
 const RESUME_EVERY := 5.0
+const TELL_EVERY := 30.0  # seconds between telling Jellyfin how far in (jellyfin.gd's report)
+var _told_t := 0.0
 const TAPE_UNIFORMS := """uniform float scissor = 0.5;
 uniform sampler2DArray covers : source_color, filter_linear_mipmap_anisotropic;
 uniform vec3 size;
@@ -128,7 +131,10 @@ func _ready() -> void:
 	_hand.visible = false
 	_saver_build()
 	video.started.connect(_on_started)
-	video.ended.connect(func() -> void: step_episode(1))
+	video.ended.connect(func() -> void:
+		if playing != null:
+			Library.report(playing.tape.e[playing.idx][2], 0.0, true)  # (watched)
+		step_episode(1))
 	video.failed.connect(func(why: String) -> void: hud.toast("⚠ " + why))
 	stock.call_deferred($"../Store")  # (once the store's built its shelves)
 
@@ -154,7 +160,7 @@ func stock(store: Node) -> void:  # the store's tapes onto its shelves (store.gd
 	var mat := ShaderMaterial.new()
 	mat.shader = Shader.new()
 	mat.shader.code = _shader()
-	mat.set_shader_parameter("shine", 0.8)  # (the sleeves: shiny plastic)
+	mat.set_shader_parameter("shine", SLEEVE_SHINE)  # (the sleeves: plastic)
 	mat.set_shader_parameter("size", size)
 	for i in tapes.size():
 		var t: Dictionary = tapes[i]
@@ -253,6 +259,8 @@ func _hang_posters(gen: int) -> void:  # the library's own covers up on the wall
 
 func _exit_tree() -> void:
 	_gen += 1  # (the workers stop)
+	for p: String in _sharp_loading:
+		WorkerThreadPool.wait_for_task_completion(_sharp_loading[p][0])
 	for task: int in _shrinking:
 		WorkerThreadPool.wait_for_task_completion(task)
 	_shrinking.clear()
@@ -381,6 +389,100 @@ func _marker(box: Vector3, c: Color, reach: float, energy: float) -> MeshInstanc
 	mi.add_child(glow)
 	add_child(mi)
 	return mi
+
+
+# ---- the covers right in front of you, sharp: the shelf's are 128 x 192 (all of them in memory at once); the nearest few
+# get their 720-tall cover laid over them, loaded off the main thread, the last SHARP_KEEP kept
+
+const SHARP := { "n": 24, "near": 1.6, "every": 0.25, "keep": 64 }
+var _sharp: Array = []  # [quad, its tape or null]
+var _sharp_tex := {}  # cover path -> ImageTexture (the most recent SHARP.keep)
+var _sharp_loading := {}  # cover path -> task
+var _sharp_t := 0.0
+
+
+func _sharp_tick(dt: float) -> void:
+	if _sharp.is_empty():
+		if tapes.is_empty():
+			return
+		var look := StandardMaterial3D.new()  # (lit as the shelf is: the room's light, a sleeve's shine)
+		look.albedo_texture = ImageTexture.create_from_image(Image.create_empty(1, 1, false, Image.FORMAT_RGB8))
+		var base: ShaderMaterial = $"../Room"._room_material(look, false)
+		for i in SHARP.n:
+			var q := MeshInstance3D.new()
+			var quad := QuadMesh.new()
+			quad.size = Vector2(size.x, size.y)
+			q.mesh = quad
+			var m: ShaderMaterial = base.duplicate()
+			m.set_shader_parameter("shine", SLEEVE_SHINE)
+			q.material_override = m
+			q.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			q.visible = false
+			add_child(q)
+			_sharp.append([q, null])
+	for s: Array in _sharp:  # (one taken off the shelf: its cover goes with it, now)
+		if s[1] != null and s[1].get("off", false):
+			s[0].visible = false
+			s[1] = null
+	_sharp_t += dt
+	if _sharp_t < SHARP.every:
+		return
+	_sharp_t = 0.0
+	var eye := cam.global_position
+	var near := []
+	for t: Dictionary in tapes:
+		var to: Vector3 = t.xf.origin - eye
+		if not t.get("off", false) and to.length_squared() < SHARP.near * SHARP.near and t.xf.basis.z.dot(to) < 0.0:
+			near.append([to.length_squared(), t])
+	near.sort_custom(func(a: Array, b: Array) -> bool: return a[0] < b[0])
+	var want := near.slice(0, SHARP.n).map(func(p: Array) -> Dictionary: return p[1])
+	var free := []
+	for s: Array in _sharp:
+		if s[1] == null or not s[1] in want:
+			s[0].visible = false
+			s[1] = null
+			free.append(s)
+	for t: Dictionary in want:
+		if _sharp.any(func(s: Array) -> bool: return s[1] == t) or free.is_empty():
+			continue
+		var tex: ImageTexture = _sharp_cover(Library.cover_path(t.cover))
+		if tex == null:
+			continue  # (loading, or none: the shelf's will do meanwhile)
+		var s: Array = free.pop_back()
+		s[1] = t
+		s[0].transform = t.xf.translated_local(Vector3(0, 0, size.z / 2.0 + 0.0015))
+		s[0].material_override.set_shader_parameter("tex", tex)
+		s[0].visible = true
+
+
+func _sharp_cover(path: String) -> ImageTexture:  # the 720 cover as a texture, or null till it's loaded (asked for in the background)
+	if _sharp_tex.has(path):
+		var tex: ImageTexture = _sharp_tex[path]
+		_sharp_tex.erase(path)
+		_sharp_tex[path] = tex  # (most recent last)
+		return tex
+	if _sharp_loading.has(path):
+		var task: int = _sharp_loading[path][0]
+		if not WorkerThreadPool.is_task_completed(task):
+			return null
+		WorkerThreadPool.wait_for_task_completion(task)
+		var img: Image = _sharp_loading[path][1][0]
+		_sharp_loading.erase(path)
+		if img == null:
+			return null
+		_sharp_tex[path] = ImageTexture.create_from_image(img)
+		if _sharp_tex.size() > SHARP.keep:
+			_sharp_tex.erase(_sharp_tex.keys()[0])
+		return _sharp_tex[path]
+	if FileAccess.file_exists(path) and _sharp_loading.size() < 4:
+		var out := [null]
+		var task := WorkerThreadPool.add_task(func() -> void:
+			var img := Image.load_from_file(path)
+			if img != null:
+				img.generate_mipmaps()
+			out[0] = img)
+		_sharp_loading[path] = [task, out]
+	return null
 
 
 func guide(t) -> void:  # light that tape's slot (null: stop)
@@ -537,6 +639,7 @@ func put_back() -> void:  # back into its own shelf slot
 
 func _process(dt: float) -> void:
 	_saver_tick(dt)
+	_sharp_tick(dt)
 	_focus.dof_blur_amount = move_toward(_focus.dof_blur_amount, FOCUS_BLUR if held != null and inspecting else 0.0, dt * FOCUS_BLUR * 4.0)
 	_focus.dof_blur_far_enabled = _focus.dof_blur_amount > 0.0
 	_home_t += dt
@@ -569,6 +672,10 @@ func _process(dt: float) -> void:
 		if _resume_t >= RESUME_EVERY:
 			_resume_t = 0.0
 			_resume_save()
+			_told_t += RESUME_EVERY
+			if _told_t >= TELL_EVERY and not video.paused:
+				_told_t = 0.0
+				Library.report(playing.tape.e[playing.idx][2], video.position)
 
 
 func _resume_save() -> void:  # (nothing in the machine: nothing to pick up next time)
@@ -782,6 +889,11 @@ func play_episode(idx: int, tape: Dictionary = playing.tape if playing != null e
 		return
 	idx = clampi(idx, 0, tape.e.size() - 1)
 	var at: float = tape.at if idx == tape.ep else 0.0
+	if at == 0.0:  # (never played here: where Jellyfin has them up to, from any app)
+		var ep: Array = tape.e[idx]
+		at = await Library.resume_at(ep[2])
+		if ep.size() > 3 and at > ep[3] - 60.0:
+			at = 0.0
 	if tape.has("d") and at > tape.d - 5.0:
 		at = 0.0  # (wound right to the end: from the top)
 	playing = { "tape": tape, "idx": idx }
@@ -810,6 +922,7 @@ func step_episode(d: int) -> void:  # the next one on the tape, when one runs ou
 
 func eject() -> void:
 	var tape: Dictionary = playing.tape
+	Library.report(tape.e[playing.idx][2], video.position)  # (where it's got to, for any other Jellyfin app)
 	video.stop()
 	playing = null
 	_resume_save()
