@@ -43,7 +43,7 @@ global uniform vec4 uFog;       // from indoors: the weather's fog on what's out
 const float VID_TV = 0.9;        // how much of the picture's colour the TV throws on what's right by it...
 const float VID_TV_R = 3.0;      // ...halved this far out
 const float VID_FLOOR = 0.06;    // the monitors over the aisles: a little of it the whole floor over
-const float VID_THEATER = 0.5;   // the theater's screen: on everything in the house
+const float VID_THEATER = 0.3;   // the theater's screen: on everything in the house (a dim room with a film on: lights.gd's HOUSE)
 global uniform vec4 uVid;       // the picture that's playing: its colour, averaged (rgb), how much it's on (a). It lights the room it's in, over whatever else is (lights.gd)
 global uniform vec3 uVidAt;     // the lounge TV, a little out from its face
 uniform vec4 albedo : source_color = vec4(1.0);
@@ -96,7 +96,7 @@ void fragment() {
 	} else if (P.x > uLobbyBox.x && P.x < uLobbyBox.y && P.z >= uLobbyBox.z && P.z < uLobbyBox.w && P.y < uBohSplit.y + 0.05) {
 		rl = (0.04 + 0.96 * uThLight.x) * fl * vec3(1.08, 0.93, 0.80);
 	} else if (P.x > uThBox.x && P.x < uThBox.y && P.z >= uThBox.z && P.z < uThBox.w && P.y < uFloorBox.w + 0.1) {
-		rl = (0.025 + 0.30 * uThLight.y + 0.12 * uThSconce) * fl * vec3(1.15, 0.82, 0.55);   // house lights + a low warm sconce wash
+		rl = (0.025 + 0.55 * uThLight.y + 0.12 * uThSconce) * fl * vec3(1.15, 0.82, 0.55);   // house lights + a low warm sconce wash
 		rl += uVid.rgb * uVid.a * VID_THEATER;   // the picture, off the screen onto the walls, the ceiling, the seats
 	} else {
 		vec3 sun = mix(uSunGround, uSunSky, 0.5 * rN.y + 0.5) + uSunC * max(dot(rN, uSunDir), 0.0) * (1.0 - uSunReal);
@@ -265,7 +265,7 @@ func _process(_dt: float) -> void:  # applyLighting: the switches' levels and th
 	var z: Dictionary = lights.zone_lvl
 	glob("uZone", Vector4(z.front, z.aisles, z.lounge, sky.level))
 	glob("uBoh", Vector4(z.hall, z.breakroom, z.restroom, z.closet))
-	glob("uThLight", Vector2(z.lobby, z.theater * lights.house))  # (the house lights down while a film's on: lights.gd)
+	glob("uThLight", Vector2(z.lobby, lights.house_lights()))  # (up between films, down while one's on: lights.gd)
 	glob("uSunDir", sky.sun_dir)
 	glob("uSunC", Vector3(sky.sun_c.r, sky.sun_c.g, sky.sun_c.b))
 	glob("uDayC", sky.day_c)

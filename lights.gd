@@ -36,7 +36,7 @@ var _night: Array[Dictionary] = []  # the lot's lamps and the street's: { light,
 var _night_t := -1.0  # seconds since dusk while the lot's lamps warm up (-1: it's day)
 var _zoned: Array[Dictionary] = []  # the few real lights that are on a switch
 var _portals: Array[Dictionary] = []  # doorways: { light, at, n, a, b (the zones either side), door (interact.gd's, or null: always open) }
-var house := 1.0  # the theater's lights, 1 up, HOUSE.showing down: eased (room.gd's shader takes it too)
+var house := 1.0  # the theater between films (1) or with one on its screen (0): eased over HOUSE.fade
 var _steps: Array[Dictionary] = []  # the aisles' step lights: { light, mat }
 var _sconces: Array = []  # the theater's wall sconces, glowing: [their material, its glow], down with the house
 
@@ -49,15 +49,15 @@ const BULB_ON := Color(1.0, 0.949, 0.769)  # 0xfff2c4
 const BULB_OFF := Color(0.227, 0.22, 0.2)  # 0x3a3833
 const DAYLIGHT := 1.5  # how strong each is at noon
 const SCREEN_GAIN := 7.0  # the TV's light, for a full-white frame
-const THEATER_GLOW := { "gain": 14.0, "out": 2.0 }  # the theater screen's light on the house: not by its size (that blew the stage and curtains out, and the bloom off them washed the picture), and from a little way out, clear of what's round it
+const THEATER_GLOW := { "gain": 9.0, "out": 2.0 }  # the theater screen's light on the house: not by its size (that blew the stage and curtains out, and the bloom off them washed the picture), and from a little way out, clear of what's round it
 const PORT := [-1.42, 2.25, 33.17]  # the projection booth's port, over the back of the auditorium (the level's lens)
 const BEAM := { "angle": 15.0, "energy": 0.4, "fog": 3.0, "follow": 1.2, "clear": 2.5 }  # wide enough for the screen's corners; barely lights what it lands on, but shows in the haze; follow: how fast its colour chases the picture's (slow: an average); clear: the haze-free stretch before the screen
 const PANEL_ON := Color(1.31, 1.33, 1.35)  # 0xf8fbff, and brighter than white: a lit panel blooms (room.gd)
 const SPILL := 0.55  # light through a doorway, for a fully lit room next to a dark one
 const SPILL_OUT := { "energy": 1.6, "range": 9.0 }  # the lit store's light out onto the sidewalk and the lot, at full dark
-const ZONE_K := { "closet": 0.8, "theater": 0.3 }  # how bright a room is with its light on, next to the rest (room.gd's shader)
+const ZONE_K := { "closet": 0.8, "theater": 0.55 }  # how bright a room is with its light on, next to the rest (room.gd's shader)
 const ZONE_TINT := { "closet": Color(1.0, 0.85, 0.66), "lobby": Color(1.0, 0.86, 0.74), "theater": Color(1.0, 0.71, 0.48) }
-const HOUSE := { "showing": 0.15, "fade": 3.0 }  # the theater with a film on its screen: the house lights, the sconces' wash and the step lights down to this, over this many seconds (and back up when it stops)
+const HOUSE := { "preshow": 0.8, "low": 0.15, "fade": 3.0 }  # the theater between films: its house lights up this far whatever the switch says (the switch: all the way); with a film on, out, and the sconces and step lights down to low; fading over this many seconds
 const STEP := { "color": Color(1.0, 0.62, 0.26), "energy": 0.35, "range": 1.6, "in": 0.25 }  # the aisles' step lights: low, amber, at each row's end (in: off the seats' edge, into the aisle)
 const PANEL_COLD := Color(0.188, 0.204, 0.239)  # 0x30343d: between stutters
 const PANEL_OFF := Color(0.051, 0.063, 0.086)  # 0x0d1016
@@ -337,6 +337,10 @@ func fancy(on: bool) -> void:  # (room.gd's: the doorways' light stays, their sh
 		p.light.shadow_enabled = on
 
 
+func house_lights() -> float:  # the theater's house lights as they are: the switch, or up for between films, down while one's on (room.gd)
+	return maxf(zone_lvl.theater, HOUSE.preshow) * house
+
+
 func set_zone(zone: String, on: bool) -> void:
 	zone_on[zone] = on
 	if on:
@@ -454,16 +458,17 @@ func _process(dt: float) -> void:  # fluorescents restriking, tube by tube (ligh
 	# the theater: with a film on its screen the lights go down, slowly; when it stops they come back up. The step lights
 	# are on whatever the switch says (they're how you find your seat), faint while it plays
 	var showing: bool = not video.url.is_empty() and video.audio.unit_size > 5.0  # (the theater's speakers: tapes.gd's _speaker)
-	house = move_toward(house, HOUSE.showing if showing else 1.0, dt * (1.0 - HOUSE.showing) / HOUSE.fade)
-	preload("res://room.gd").glob("uThSconce", house)
+	house = move_toward(house, 0.0 if showing else 1.0, dt / HOUSE.fade)
+	var glow := lerpf(HOUSE.low, 1.0, house)  # (the sconces and the steps: never quite out)
+	preload("res://room.gd").glob("uThSconce", glow)
 	for sc: Array in _sconces:
-		sc[0].set_shader_parameter("emission", sc[1] * (0.25 + 0.75 * house))
+		sc[0].set_shader_parameter("emission", sc[1] * glow)
 	for st in _steps:
-		st.light.light_energy = STEP.energy * house
-		st.mat.albedo_color = STEP.color * (0.35 + 0.85 * house)
+		st.light.light_energy = STEP.energy * glow
+		st.mat.albedo_color = STEP.color * (0.2 + glow)
 	for p in _portals:  # through each doorway, from the brighter room into the darker, as far as the door's open
-		var la: float = zone_lvl[p.a] * ZONE_K.get(p.a, 1.0) * (house if p.a == "theater" else 1.0)
-		var lb: float = zone_lvl[p.b] * ZONE_K.get(p.b, 1.0) * (house if p.b == "theater" else 1.0)
+		var la: float = (house_lights() if p.a == "theater" else zone_lvl[p.a]) * ZONE_K.get(p.a, 1.0)
+		var lb: float = (house_lights() if p.b == "theater" else zone_lvl[p.b]) * ZONE_K.get(p.b, 1.0)
 		var open: float = 1.0 if p.door == null else clampf(absf(p.door.a) / 1.0, 0.0, 1.0)
 		var l: SpotLight3D = p.light
 		l.light_energy = SPILL * absf(la - lb) * open
