@@ -43,13 +43,30 @@ const GLASS_HZ := 650.0  # what of the road gets through the storefront glass (o
 const OPEN_HZ := 9000.0
 var _out := 0.0  # 0 in the building, 1 out in the open (eased: the door's a second's walk)
 var _glass: AudioEffectLowPassFilter
+const FILM_THRESHOLD := -30.0  # the Film bus's squeeze (dB): louder than this is turned down by the ratio, then all of it brought up by the gain
+const FILM_RATIO := 4.0  # (20 dB louder in comes out 5 louder: lower the threshold or raise this for films more alike, at the cost of the bangs' punch)
+const FILM_GAIN := 10.0  # (dB: what the squeeze takes off a typical film's loud parts, given back to all of it)
 
 
 func _init() -> void:  # buses of its own: Store (so M can shut it all up); Room into it (a little of the room on the chime, steps and doors);
 	# Outside into it (what's out front: through the glass from in here, a lowpass that opens up when you're out there);
-	# (the film's on none of them: straight to Master from the screen, video.gd)
+	# and Film, the screen's sound (video.gd), squeezed toward one loudness: films are mixed anywhere from whisper-quiet
+	# to loud, and their own quiet and loud parts far apart, so the quiet ones come up and the bangs come down
+	# (not under M: it's the film; the picture menu's VOLUME is its fader, after the squeeze: picture.gd).
+	# Master ends in a limiter: nothing past full scale, however loud the film's turned up, can crackle
 	if AudioServer.get_bus_index("Store") >= 0:
 		return
+	var level := AudioEffectCompressor.new()
+	level.threshold = FILM_THRESHOLD
+	level.ratio = FILM_RATIO
+	level.gain = FILM_GAIN
+	level.attack_us = 2000.0  # (as slow as it goes: the crack of a gunshot gets through, the boom after it is held down)
+	level.release_ms = 1200.0  # (eases back over a second or so: the dialogue after an explosion isn't left ducked, and it doesn't pump)
+	_bus("Film", "Master", AudioEffectAmplify.new())  # first, the film's own trim: how far off TARGET_LUFS it's measured (video.gd rides it)
+	AudioServer.add_bus_effect(AudioServer.bus_count - 1, level)
+	var ceiling := AudioEffectHardLimiter.new()
+	ceiling.ceiling_db = -1.0
+	AudioServer.add_bus_effect(0, ceiling)
 	_bus("Store", "Master")
 	_bus("Room", "Store", _verb(0.35, 0.7, 0.15, 15.0))  # a small store: short, darker as it decays
 	var glass := AudioEffectLowPassFilter.new()

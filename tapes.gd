@@ -42,6 +42,7 @@ static func _shader() -> String:  # the room's own light (room.gd), on a cover f
 
 
 var HAND := Transform3D(Basis.from_euler(Vector3(0.05, -0.4, 0.06)), Vector3(0.3, -0.28, -0.55))  # carried
+const THEATER_GROW := 6.2 / 5.7  # the theater's picture, past its 5.7 m screen to 6.2: its edges tuck in behind the proscenium's pillars, header and stage (the opening's 6.16 x 3.94)
 var LOOK := Transform3D(Basis.IDENTITY, Vector3(0, 0, -0.22))  # held up, cover to you: about 60% of the screen's height (fov 70)
 var LOOK_BACK := Transform3D(Basis(Vector3.UP, PI), Vector3(0, 0, -0.165))  # turned over, closer: the small print, the box about 85% of the screen's height
 
@@ -171,7 +172,7 @@ func stock(store: Node) -> void:  # the store's tapes onto its shelves (store.gd
 	for sc: Dictionary in screens + Level.data().get("minis", []):  # the picture, a hair in front of each screen (the theater's, and the CRTs over the aisles)
 		var q := MeshInstance3D.new()
 		var quad := QuadMesh.new()
-		quad.size = Vector2(sc.w, sc.h)
+		quad.size = Vector2(sc.w, sc.h) * (THEATER_GROW if sc.get("kind") == "theater" else 1.0)
 		quad.material = $"../Picture".material(true)  # (the picture menu's brightness and the rest)
 		q.mesh = quad
 		if sc.has("q"):

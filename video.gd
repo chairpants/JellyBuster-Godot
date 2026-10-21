@@ -24,6 +24,12 @@ const CHUNK_SEC := 10  # fetch granularity
 const WORKERS := 2  # chunks fetching at once: network-bound, not CPU-bound
 const QUEUE_MAX := 2  # finished chunks allowed to pile up before we stop fetching
 const RING := 6  # chunk files; must exceed WORKERS + QUEUE_MAX + the one playing
+const TARGET_LUFS := -24.0  # every film brought to this loudness (EBU R128, measured chunk by chunk as they're fetched) before the Film bus's squeeze
+const TRIM_MAX := 10.0  # dB either way, at most
+const TRIM_RATE := 1.0  # dB a second it moves at, as the measure firms up (slow enough not to be heard)
+# 5.1 to stereo with the centre (the dialogue) at full and the rest under it; ffmpeg's own -ac 2 puts the centre 3 dB down,
+# under the score and the bangs. Through 5.1 first: that takes side or back surrounds, 7.1, whatever. (< : no clipping)
+const DOWNMIX := "aformat=channel_layouts=5.1,pan=stereo|FL<FC+0.6*FL+0.4*BL|FR<FC+0.6*FR+0.4*BR,"
 
 var texture := ImageTexture.create_from_image(Image.create_empty(RES.x, RES.y, false, Image.FORMAT_RGB8))
 var audio := AudioStreamPlayer3D.new()  # the sound, from the screen it's playing on (tapes.gd puts it there)
@@ -38,7 +44,10 @@ var fps := 0.0  # what's playing plays at (the source's own); 0 while ffprobe's 
 
 var _has_ffmpeg := false
 var _probe := {}  # { pid, pipe }: ffprobe asking the file its frame rate
-var _fps_of := {}  # url -> its frame rate, once asked (a seek starts over with the same url)
+var _fps_of := {}  # url -> [its frame rate, content, its channels], once asked (a seek starts over with the same url)
+var _channels := 2  # the source's sound (more than 2: DOWNMIX)
+var _loud_of := {}  # url -> [summed power, chunks]: its loudness so far, from the chunks fetched (silent ones left out)
+var _trim := 0.0  # dB on the Film bus's Amplify, heading for TARGET_LUFS
 var _src_pos := 0.0  # where the next chunk to fetch starts
 var _jobs: Array[Dictionary] = []  # { pid, file, at }: fetching now, oldest first
 var _queue: Array[Dictionary] = []  # { file, at }: fetched, waiting their turn
@@ -53,7 +62,8 @@ func _ready() -> void:
 	add_child(audio)
 	audio.position = Vector3.ZERO  # (the TV's, once a tape goes in: tapes.gd)
 	audio.unit_size = 3.0
-	audio.max_db = 10.0  # (the picture menu's VOLUME at 200, twice as loud: picture.gd)
+	audio.max_db = 3.0  # (right up at the screen, no louder than this: the VOLUME's on the Film bus now, picture.gd)
+	audio.bus = "Film"  # (evened out there: ambience.gd)
 	_has_ffmpeg = OS.execute("ffmpeg", ["-version"], []) == 0
 
 
@@ -67,6 +77,7 @@ func play_episode(ep: Array, at := 0.0) -> void:  # ep: ["jellyfin", title, item
 
 
 func play_url(u: String, at := 0.0) -> void:
+	var fresh := u != url  # (a seek isn't: it keeps the trim it had)
 	stop()
 	if not _has_ffmpeg:
 		failed.emit("ffmpeg isn't on this machine's PATH")
@@ -78,8 +89,12 @@ func play_url(u: String, at := 0.0) -> void:
 	_shown = 0
 	fps = _fps_of.get(u, [0.0])[0]
 	content = _fps_of.get(u, [0.0, Rect2(Vector2.ZERO, RES)])[1]
-	if fps == 0.0:
-		var p := OS.execute_with_pipe("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=avg_frame_rate,r_frame_rate,width,height,sample_aspect_ratio", "-of", "default=nw=1", url])
+	_channels = _fps_of.get(u, [0.0, content, 2])[2]
+	if fresh:  # (a film heard before starts where it was; a new one level till it's measured)
+		_trim = _trim_for(u)
+		_set_trim()
+	if fps == 0.0:  # (a line a stream: "codec_type=video|width=...|...")
+		var p := OS.execute_with_pipe("ffprobe", ["-v", "error", "-show_entries", "stream=codec_type,channels,avg_frame_rate,r_frame_rate,width,height,sample_aspect_ratio", "-of", "compact=p=0", url])
 		if p.is_empty():
 			fps = FALLBACK_FPS
 		else:
@@ -112,7 +127,7 @@ func stop() -> void:
 	_empty = 0
 	_acc = 0.0
 	for i in RING:  # (a killed ffmpeg can hold its file a moment: whatever's left goes next time)
-		for path in [_raw(i), _ogg(i)]:
+		for path in [_raw(i), _ogg(i), _loud(i)]:
 			if FileAccess.file_exists(path):
 				DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 
@@ -125,6 +140,36 @@ func _ogg(slot: int) -> String:
 	return "user://video_%d.ogg" % slot
 
 
+func _loud(slot: int) -> String:
+	return "user://video_%d.loud" % slot
+
+
+func _heard(job: Dictionary) -> void:  # a fetched chunk's loudness (ebur128's integrated, the last it printed) into its film's
+	var f := FileAccess.open(_loud(job.slot), FileAccess.READ)
+	if f == null:
+		return
+	var lufs := 0.0
+	for line in f.get_as_text().split("\n"):
+		if line.begins_with("lavfi.r128.I="):
+			lufs = line.get_slice("=", 1).to_float()
+	if lufs > -50.0 and lufs < 0.0:  # (silence, or nothing measured: no say)
+		var sofar: Array = _loud_of.get(url, [0.0, 0])
+		_loud_of[url] = [sofar[0] + pow(10.0, lufs / 10.0), sofar[1] + 1]
+
+
+func _trim_for(u: String) -> float:
+	var sofar: Array = _loud_of.get(u, [0.0, 0])
+	if sofar[1] == 0:
+		return 0.0
+	return clampf(TARGET_LUFS - 10.0 * log(sofar[0] / sofar[1]) / log(10.0), -TRIM_MAX, TRIM_MAX)
+
+
+func _set_trim() -> void:
+	var bus := AudioServer.get_bus_index("Film")
+	if bus >= 0:
+		(AudioServer.get_bus_effect(bus, 0) as AudioEffectAmplify).volume_db = _trim
+
+
 func _process(dt: float) -> void:
 	if url.is_empty():
 		return
@@ -132,14 +177,23 @@ func _process(dt: float) -> void:
 		if OS.is_process_running(_probe.pid):
 			return
 		var said := {}
-		while true:  # (key=value lines, till they stop)
-			var kv: PackedStringArray = _probe.stdio.get_line().strip_edges().split("=")
-			if kv.size() != 2:
+		_channels = 2
+		while true:  # (a line a stream, till they stop: the first picture's, and the most channels any sound has, which ffmpeg picks)
+			var line: String = _probe.stdio.get_line().strip_edges()
+			if line.is_empty():
 				break
-			said[kv[0]] = kv[1]
+			var stream := {}
+			for f in line.split("|"):
+				var kv := f.split("=")
+				if kv.size() == 2:
+					stream[kv[0]] = kv[1]
+			if stream.get("codec_type") == "video" and said.is_empty():
+				said = stream
+			elif stream.get("codec_type") == "audio":
+				_channels = maxi(_channels, stream.get("channels", "2").to_int())
 		fps = _rate("%s,%s" % [said.get("avg_frame_rate", ""), said.get("r_frame_rate", "")])
 		content = _fit(said)
-		_fps_of[url] = [fps, content]
+		_fps_of[url] = [fps, content, _channels]
 		_probe = {}
 	# keep the queue stocked: ffmpeg fetches faster than it plays, so the next chunk's landed before this one runs out.
 	# Workers finish out of order, so only the oldest is released: that keeps the queue in order
@@ -147,6 +201,7 @@ func _process(dt: float) -> void:
 		var job: Dictionary = _jobs.pop_front()
 		if _chunk_ok(job.file):
 			_queue.append(job)
+			_heard(job)
 			_empty = 0
 		else:  # past the end, or the server gave up on it
 			_empty += 1
@@ -155,6 +210,8 @@ func _process(dt: float) -> void:
 		if not _start_chunk():
 			return
 		more = duration <= 0.0 or _src_pos < duration
+	_trim = move_toward(_trim, _trim_for(url), TRIM_RATE * dt)
+	_set_trim()
 	if paused:
 		return
 	_acc += dt
@@ -182,7 +239,9 @@ func _start_chunk() -> bool:
 		# fitted inside the frame at its own shape, black round it (never stretched)
 		"-vf", "scale=%d:%d:force_original_aspect_ratio=decrease:flags=lanczos,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,fps=%s" % [RES.x, RES.y, RES.x, RES.y, fps],  # the picture: uncompressed rgb24, byte for byte what Image.FORMAT_RGB8 wants
 		"-f", "rawvideo", "-pix_fmt", "rgb24", "-y", ProjectSettings.globalize_path(file),
-		"-vn", "-ac", "2", "-c:a", "libvorbis", "-q:a", "3", "-y", ProjectSettings.globalize_path(_ogg(_slot)),  # the sound: a second output of the same process (surround mixed down to stereo)
+		# the sound: a second output of the same process (surround mixed down to stereo), measured on its way (_heard)
+		"-vn", "-af", (DOWNMIX if _channels > 2 else "") + "ebur128=metadata=1,ametadata=print:key=lavfi.r128.I:file='%s'" % _escaped(_loud(_slot)),
+		"-ac", "2", "-c:a", "libvorbis", "-q:a", "3", "-y", ProjectSettings.globalize_path(_ogg(_slot)),
 	])
 	if pid == -1:
 		_has_ffmpeg = false
@@ -193,6 +252,10 @@ func _start_chunk() -> bool:
 	_slot = (_slot + 1) % RING
 	_src_pos += CHUNK_SEC
 	return true
+
+
+static func _escaped(path: String) -> String:  # a path inside a filter's quotes (Windows' "C:" would end the option)
+	return ProjectSettings.globalize_path(path).replace("\\", "/").replace(":", "\\:")
 
 
 static func _fit(said: Dictionary) -> Rect2:  # the film's own shape, fitted inside RES as ffmpeg's scale and pad put it (a pixel in from each edge: no black seam)

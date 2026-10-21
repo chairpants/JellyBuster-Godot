@@ -15,11 +15,34 @@ uniform float uFx = 1.0; uniform float uK = 1.0;
 uniform float uBright = 1.0; uniform float uContrast = 1.0; uniform float uSat = 1.0; uniform float uHue = 0.0;
 uniform float uSharp = 0.0; uniform float uScan = 0.0; uniform float uPix = 0.0;
 
+vec3 cubic(sampler2D t, vec2 uv, vec2 sz) {   // Catmull-Rom, in nine bilinear taps: crisper than bilinear where the picture's blown up (close, zoomed, full screen)
+	vec2 tc = floor(uv * sz - 0.5) + 0.5;
+	vec2 f = uv * sz - tc;
+	vec2 w0 = f * (-0.5 + f * (1.0 - 0.5 * f));
+	vec2 w1 = 1.0 + f * f * (-2.5 + 1.5 * f);
+	vec2 w2 = f * (0.5 + f * (2.0 - 1.5 * f));
+	vec2 w3 = f * f * (-0.5 + 0.5 * f);
+	vec2 w12 = w1 + w2;
+	vec2 a = (tc - 1.0) / sz, b = (tc + w2 / w12) / sz, d = (tc + 2.0) / sz;
+	vec3 c = (texture(t, vec2(a.x, a.y)).rgb * w0.x + texture(t, vec2(b.x, a.y)).rgb * w12.x + texture(t, vec2(d.x, a.y)).rgb * w3.x) * w0.y
+		+ (texture(t, vec2(a.x, b.y)).rgb * w0.x + texture(t, vec2(b.x, b.y)).rgb * w12.x + texture(t, vec2(d.x, b.y)).rgb * w3.x) * w12.y
+		+ (texture(t, vec2(a.x, d.y)).rgb * w0.x + texture(t, vec2(b.x, d.y)).rgb * w12.x + texture(t, vec2(d.x, d.y)).rgb * w3.x) * w3.y;
+	return max(c, 0.0);
+}
+
+vec3 look(sampler2D t, vec2 uv, vec2 sz) {   // the picture at uv: blown up, cubic; seen from further back (more texels than pixels: no mipmaps to fall back on), four taps across the pixel, else it shimmers
+	vec2 dx = dFdx(uv), dy = dFdy(uv);
+	float texels = max(length(dx * sz), length(dy * sz));
+	vec3 far = (texture(t, uv + 0.125 * dx + 0.375 * dy).rgb + texture(t, uv - 0.125 * dx - 0.375 * dy).rgb
+		+ texture(t, uv + 0.375 * dx - 0.125 * dy).rgb + texture(t, uv - 0.375 * dx + 0.125 * dy).rgb) * 0.25;
+	return mix(cubic(t, uv, sz), far, smoothstep(0.8, 1.3, texels));
+}
+
 vec3 pic(sampler2D t, vec2 uv) {   // as the web game's CSS filters: in sRGB, brightness, contrast, saturate, hue-rotate, then an unsharp mask
 	vec2 sz = vec2(textureSize(t, 0));
 	if (uFx < 0.5) return texture(t, uv).rgb * uK;
 	if (uPix > 0.5) uv = (floor(uv * sz) + 0.5) / sz;
-	vec3 c = texture(t, uv).rgb;
+	vec3 c = uPix > 0.5 ? texture(t, uv).rgb : look(t, uv, sz);
 	if (uSharp > 0.0) {
 		vec2 px = 1.0 / sz;
 		vec3 n = texture(t, uv + vec2(px.x, 0)).rgb + texture(t, uv - vec2(px.x, 0)).rgb + texture(t, uv + vec2(0, px.y)).rgb + texture(t, uv - vec2(0, px.y)).rgb;
@@ -145,8 +168,8 @@ func _apply() -> void:
 		m.set_shader_parameter("uSharp", tv.sharpen / 100.0 * 1.5)
 		m.set_shader_parameter("uScan", 1.0 if tv.scanlines else 0.0)
 		m.set_shader_parameter("uPix", 1.0 if tv.pixelated else 0.0)
-	var audio: AudioStreamPlayer3D = $"../Video".audio
-	audio.volume_db = 10.0 * log(maxf(tv.volume, 1.0) / 100.0) / log(2.0)  # (as loud as it sounds: twice as loud, +10 dB, at 200; half, -10, at 50)
+	# the Film bus's fader, not the player's volume (the player's is capped by its max_db, so up close 200 did nothing)
+	AudioServer.set_bus_volume_db(AudioServer.get_bus_index("Film"), 10.0 * log(maxf(tv.volume, 1.0) / 100.0) / log(2.0))  # (as loud as it sounds: twice as loud, +10 dB, at 200; half, -10, at 50)
 
 
 func open() -> void:
