@@ -140,7 +140,7 @@ func _trace(video: Node, audio: AudioStreamPlayer3D, bus: int, hz: float, near: 
 		return
 	var out := AudioServer.get_bus_peak_volume_left_db(bus, 0)
 	var line := "film: fps %d  dt %.0f ms  playing %s  at %.1f/%.1f s  out %.0f dB  trim %.1f  cutoff %.0f Hz (%s)  amp %.1f dB  walls %.2f  near %.2f" % [
-		Engine.get_frames_per_second(), dt * 1000.0, audio.playing, audio.get_playback_position(), audio.stream.get_length() if audio.stream else 0.0,
+		Engine.get_frames_per_second(), dt * 1000.0, audio.playing, video.position, video.duration,
 		out, (AudioServer.get_bus_effect(bus, 0) as AudioEffectAmplify).volume_db, (AudioServer.get_bus_effect(bus, 2) as AudioEffectLowPassFilter).cutoff_hz,
 		"on" if AudioServer.is_bus_effect_enabled(bus, 2) else "off", (AudioServer.get_bus_effect(bus, 3) as AudioEffectAmplify).volume_db, _walls, near]
 	_quiet = _quiet + dt if out < -90.0 else 0.0

@@ -7,8 +7,10 @@ extends Node
 ##
 ## From SpaceLife's scripts/wall_tv.gd: the picture comes from ffmpeg, not a Godot plugin and not through a video
 ## codec. ffmpeg opens the https stream, seeks, and writes plain uncompressed frames a chunk at a time, which are
-## blitted into the texture one by one; the chunk's sound comes out beside it as Ogg. (Godot's own player only reads
-## Ogg Theora, and transcoding to that ran below realtime.) So ffmpeg has to be on the machine's PATH; without it,
+## blitted into the texture one by one; the chunk's sound comes out beside it as plain samples, poured one chunk after
+## another into a single stream, so there's never a gap between them; and the picture shows whichever frame goes with
+## the sound that's being heard (the sound's the clock). (Godot's own player only reads Ogg Theora, and transcoding to
+## that ran below realtime.) So ffmpeg has to be on the machine's PATH; without it,
 ## failed() and nothing plays. The cost is disk: raw frames are ~10 MB/s, in user://, cleared when it stops.
 ## The file comes straight off the Jellyfin server (static stream, no server transcode); ffmpeg seeks within it.
 
@@ -23,7 +25,9 @@ const FRAME_BYTES := RES.x * RES.y * 3  # rgb24
 const CHUNK_SEC := 10  # fetch granularity
 const WORKERS := 2  # chunks fetching at once: network-bound, not CPU-bound
 const QUEUE_MAX := 2  # finished chunks allowed to pile up before we stop fetching
-const RING := 6  # chunk files; must exceed WORKERS + QUEUE_MAX + the one playing
+const RING := 7  # chunk files; must exceed WORKERS + QUEUE_MAX + the two playing (the sound runs a little ahead into the next)
+const RATE := 48000  # the sound, as ffmpeg writes it: stereo float samples at this rate
+const AHEAD := 0.5  # seconds of sound poured ahead of what's heard
 const TARGET_LUFS := -24.0  # every film brought to this loudness (EBU R128, measured chunk by chunk as they're fetched) before the Film bus's squeeze
 const TRIM_MAX := 10.0  # dB either way, at most
 const TRIM_RATE := 1.0  # dB a second it moves at, as the measure firms up (slow enough not to be heard)
@@ -31,6 +35,7 @@ const TRIM_RATE := 1.0  # dB a second it moves at, as the measure firms up (slow
 # under the score and the bangs. Through 5.1 first: that takes side or back surrounds, 7.1, whatever. (< : no clipping)
 const DOWNMIX := "aformat=channel_layouts=5.1,pan=stereo|FL<FC+0.6*FL+0.4*BL|FR<FC+0.6*FR+0.4*BR,"
 
+var _img := Image.create_empty(RES.x, RES.y, false, Image.FORMAT_RGB8)
 var texture := ImageTexture.create_from_image(Image.create_empty(RES.x, RES.y, false, Image.FORMAT_RGB8))
 var audio := AudioStreamPlayer3D.new()  # the sound, from the screen it's playing on (tapes.gd puts it there)
 var content := Rect2(Vector2.ZERO, RES)  # where the film itself sits in the frame (the rest: the black it's padded with); full screen shows just this
@@ -51,9 +56,11 @@ var _trim := 0.0  # dB on the Film bus's Amplify, heading for TARGET_LUFS
 var _src_pos := 0.0  # where the next chunk to fetch starts
 var _jobs: Array[Dictionary] = []  # { pid, file, at }: fetching now, oldest first
 var _queue: Array[Dictionary] = []  # { file, at }: fetched, waiting their turn
-var _reader: FileAccess = null  # the chunk on screen
+var _live: Array[Dictionary] = []  # chunks being heard or shown, oldest first: { file, at, slot, s0 (where its sound starts, in samples poured), samples, frames, pcm (its sound, being read) }
+var _gen: AudioStreamGeneratorPlayback = null
+var _poured := 0  # samples into the stream since it started
+var _room := 0  # the stream's buffer, in samples (how far ahead it can be)
 var _slot := 0
-var _acc := 0.0
 var _empty := 0  # chunks in a row that came back with nothing: two, and it's over
 var _shown := 0  # frames put up since it started
 
@@ -120,15 +127,16 @@ func stop() -> void:
 		OS.kill(job.pid)
 	_jobs.clear()
 	_queue.clear()
-	_reader = null
+	_live.clear()
+	_gen = null
+	_poured = 0
 	audio.stop()
 	audio.stream = null
 	tint = Color.BLACK
 	url = ""
 	_empty = 0
-	_acc = 0.0
 	for i in RING:  # (a killed ffmpeg can hold its file a moment: whatever's left goes next time)
-		for path in [_raw(i), _ogg(i), _loud(i)]:
+		for path in [_raw(i), _pcm(i), _loud(i)]:
 			if FileAccess.file_exists(path):
 				DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 
@@ -137,8 +145,8 @@ func _raw(slot: int) -> String:
 	return "user://video_%d.raw" % slot
 
 
-func _ogg(slot: int) -> String:
-	return "user://video_%d.ogg" % slot
+func _pcm(slot: int) -> String:
+	return "user://video_%d.pcm" % slot
 
 
 func _loud(slot: int) -> String:
@@ -213,21 +221,65 @@ func _process(dt: float) -> void:
 		more = duration <= 0.0 or _src_pos < duration
 	_trim = move_toward(_trim, _trim_for(url), TRIM_RATE * dt)
 	_set_trim()
-	if paused:
+	_pour()
+	if _gen == null:
 		return
-	_acc += dt
-	while _acc >= 1.0 / fps:
-		_acc -= 1.0 / fps
-		if not _next_frame():
-			_acc = 0.0
-			if _jobs.is_empty() and _queue.is_empty() and (not more or _empty >= 2):  # nothing left to come
-				var was_empty := _shown == 0
-				stop()
-				if was_empty:
-					failed.emit("the server wouldn't play it")
-				else:
-					ended.emit()
-			break
+	var heard := maxi(0, _poured - (_room - _gen.get_frames_available()))  # (what's been heard: poured, less what's still waiting in the buffer)
+	while _live.size() > 0 and heard >= _live[0].s0 + _live[0].samples and (_live.size() > 1 or _queue.is_empty()):
+		_live.pop_front()  # (heard all of it, and the next's begun: done with)
+	if _live.is_empty():
+		if _jobs.is_empty() and _queue.is_empty() and (not more or _empty >= 2):  # nothing left to come
+			var was_empty := _shown == 0
+			stop()
+			if was_empty:
+				failed.emit("the server wouldn't play it")
+			else:
+				ended.emit()
+		return
+	var c: Dictionary = _live[0]
+	var into := clampf(float(heard - c.s0) / RATE, 0.0, float(c.samples) / RATE)
+	position = c.at + into
+	_show(c, mini(int(into * fps), c.frames - 1))
+
+
+func _pour() -> void:  # the sound: into the stream as far ahead as it'll take, chunk after chunk with nothing between
+	if _gen == null:
+		if _queue.is_empty():
+			return
+		var stream := AudioStreamGenerator.new()
+		stream.mix_rate = RATE
+		stream.buffer_length = AHEAD
+		audio.stream = stream
+		audio.play()
+		audio.stream_paused = paused
+		_gen = audio.get_stream_playback()
+		_room = _gen.get_frames_available()
+	var want := _gen.get_frames_available()
+	while want > 0:
+		var c = _live.back() if not _live.is_empty() and _live.back().poured < _live.back().samples else null
+		if c == null:
+			if _queue.is_empty():
+				return  # (the next chunk isn't here yet: the sound waits, and the picture with it)
+			c = _queue.pop_front()
+			var raw := FileAccess.open(c.file, FileAccess.READ)
+			c.frames = int(raw.get_length() / FRAME_BYTES) if raw else 0
+			c.pcm = FileAccess.open(c.pcm_path, FileAccess.READ)
+			c.samples = int(c.pcm.get_length() / 8) if c.pcm else int(c.frames / fps * RATE)  # (no sound: as long as its picture, in silence)
+			c.poured = 0
+			c.s0 = _poured
+			_live.append(c)
+			continue
+		var n := mini(want, c.samples - c.poured)
+		var buf := PackedVector2Array()
+		buf.resize(n)
+		if c.pcm != null:
+			var f: PackedFloat32Array = c.pcm.get_buffer(n * 8).to_float32_array()
+			for i in mini(n, f.size() / 2):
+				buf[i] = Vector2(f[i * 2], f[i * 2 + 1])
+		_gen.push_buffer(buf)
+		c.poured += n
+		_poured += n
+		want -= n
 
 
 func _start_chunk() -> bool:
@@ -242,14 +294,14 @@ func _start_chunk() -> bool:
 		"-f", "rawvideo", "-pix_fmt", "rgb24", "-y", ProjectSettings.globalize_path(file),
 		# the sound: a second output of the same process (surround mixed down to stereo), measured on its way (_heard)
 		"-vn", "-af", (DOWNMIX if _channels > 2 else "") + "ebur128=metadata=1,ametadata=print:key=lavfi.r128.I:file='%s'" % _escaped(_loud(_slot)),
-		"-ac", "2", "-c:a", "libvorbis", "-q:a", "3", "-y", ProjectSettings.globalize_path(_ogg(_slot)),
+		"-ac", "2", "-ar", str(RATE), "-f", "f32le", "-y", ProjectSettings.globalize_path(_pcm(_slot)),
 	])
 	if pid == -1:
 		_has_ffmpeg = false
 		stop()
 		failed.emit("ffmpeg wouldn't start")
 		return false
-	_jobs.append({ "pid": pid, "file": file, "at": _src_pos, "slot": _slot })
+	_jobs.append({ "pid": pid, "file": file, "pcm_path": _pcm(_slot), "at": _src_pos, "slot": _slot })
 	_slot = (_slot + 1) % RING
 	_src_pos += CHUNK_SEC
 	return true
@@ -297,31 +349,21 @@ func _frame_tint(buf: PackedByteArray) -> Color:  # a sparse stride, not every p
 	return Color(r, g, b) / (255.0 * maxi(1, n))
 
 
-func _next_frame() -> bool:
-	for _attempt in 2:
-		if _reader == null:
-			if _queue.is_empty():
-				return false
-			var chunk: Dictionary = _queue.pop_front()
-			_reader = FileAccess.open(chunk.file, FileAccess.READ)
-			position = chunk.at
-			# sound rides along with the picture: both start at the top of the chunk, so drift is bounded by one chunk
-			var ogg := AudioStreamOggVorbis.load_from_file(ProjectSettings.globalize_path(_ogg(chunk.slot)))
-			print("video: chunk at %.0f s, slot %d, sound %s" % [chunk.at, chunk.slot, "%.1f s" % ogg.get_length() if ogg else "MISSING"])  # ponytail: the dropout hunt
-			if ogg != null:
-				audio.stream = ogg
-				audio.play()
-			else:
-				push_warning("video: no sound for the chunk at %.0f s (slot %d)" % [chunk.at, chunk.slot])
-			continue
-		var buf := _reader.get_buffer(FRAME_BYTES)
-		if buf.size() == FRAME_BYTES:
-			texture.update(Image.create_from_data(RES.x, RES.y, false, Image.FORMAT_RGB8, buf))
-			tint = _frame_tint(buf)
-			position += 1.0 / fps
-			_shown += 1
-			if _shown == 1:
-				started.emit()
-			return true
-		_reader = null  # short read: the chunk's run out
-	return false
+func _show(c: Dictionary, i: int) -> void:  # that frame of the chunk up, if it isn't already (read straight from where it sits in the file)
+	if i < 0 or c.get("shown", -1) == i:
+		return
+	if not c.has("raw"):
+		c.raw = FileAccess.open(c.file, FileAccess.READ)
+	if c.raw == null:
+		return
+	c.raw.seek(i * FRAME_BYTES)
+	var buf: PackedByteArray = c.raw.get_buffer(FRAME_BYTES)
+	if buf.size() != FRAME_BYTES:
+		return
+	c.shown = i
+	_img.set_data(RES.x, RES.y, false, Image.FORMAT_RGB8, buf)  # (the one image, refilled: not 2 MB made and thrown away a frame)
+	texture.update(_img)
+	tint = _frame_tint(buf)
+	_shown += 1
+	if _shown == 1:
+		started.emit()
