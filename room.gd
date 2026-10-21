@@ -265,7 +265,7 @@ func _process(_dt: float) -> void:  # applyLighting: the switches' levels and th
 	var z: Dictionary = lights.zone_lvl
 	glob("uZone", Vector4(z.front, z.aisles, z.lounge, sky.level))
 	glob("uBoh", Vector4(z.hall, z.breakroom, z.restroom, z.closet))
-	glob("uThLight", Vector2(z.lobby, z.theater))
+	glob("uThLight", Vector2(z.lobby, z.theater * lights.house))  # (the house lights down while a film's on: lights.gd)
 	glob("uSunDir", sky.sun_dir)
 	glob("uSunC", Vector3(sky.sun_c.r, sky.sun_c.g, sky.sun_c.b))
 	glob("uDayC", sky.day_c)

@@ -25,6 +25,7 @@ folder, `jellyfin.cfg`). F2 in the store asks again. Or pick the made-up library
 | E | Doors, seats, light switches, lamps, ladders; at the theater's screen or the lounge TV, the tape in your hand goes in (again: out) |
 | R | Turn the tape in your hand over: the back of the box, from Jellyfin (the blurb, the cast, the credits); again: the front |
 | , . (held) / [ ] | Rewind / fast-forward (a bar shows where to; plays from there half a second after letting go); the episode before / after |
+| / | Pause the tape that's playing; again: play |
 | Wheel, sat down | Zoom; all the way in on a screen that's playing, one more notch: the picture full screen (back out: the room) |
 | F | Sat down with a tape on: full screen and back; stood up: fly. Held: the time and weather wheel (pick with the mouse) |
 | L / M / J / H | Skip an hour / mute / fold the log / hide everything written on screen |

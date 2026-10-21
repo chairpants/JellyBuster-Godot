@@ -36,6 +36,9 @@ var _night: Array[Dictionary] = []  # the lot's lamps and the street's: { light,
 var _night_t := -1.0  # seconds since dusk while the lot's lamps warm up (-1: it's day)
 var _zoned: Array[Dictionary] = []  # the few real lights that are on a switch
 var _portals: Array[Dictionary] = []  # doorways: { light, at, n, a, b (the zones either side), door (interact.gd's, or null: always open) }
+var house := 1.0  # the theater's lights, 1 up, HOUSE.showing down: eased (room.gd's shader takes it too)
+var _steps: Array[Dictionary] = []  # the aisles' step lights: { light, mat }
+var _sconces: Array = []  # the theater's wall sconces, glowing: [their material, its glow], down with the house
 
 @onready var sky: Node3D = $"../Sky"
 @onready var video: Node = $"../Video"
@@ -54,6 +57,8 @@ const SPILL := 0.55  # light through a doorway, for a fully lit room next to a d
 const SPILL_OUT := { "energy": 1.6, "range": 9.0 }  # the lit store's light out onto the sidewalk and the lot, at full dark
 const ZONE_K := { "closet": 0.8, "theater": 0.3 }  # how bright a room is with its light on, next to the rest (room.gd's shader)
 const ZONE_TINT := { "closet": Color(1.0, 0.85, 0.66), "lobby": Color(1.0, 0.86, 0.74), "theater": Color(1.0, 0.71, 0.48) }
+const HOUSE := { "showing": 0.15, "fade": 3.0 }  # the theater with a film on its screen: the house lights, the sconces' wash and the step lights down to this, over this many seconds (and back up when it stops)
+const STEP := { "color": Color(1.0, 0.62, 0.26), "energy": 0.35, "range": 1.6, "in": 0.25 }  # the aisles' step lights: low, amber, at each row's end (in: off the seats' edge, into the aisle)
 const PANEL_COLD := Color(0.188, 0.204, 0.239)  # 0x30343d: between stutters
 const PANEL_OFF := Color(0.051, 0.063, 0.086)  # 0x0d1016
 
@@ -221,7 +226,18 @@ func _ready() -> void:
 						shades.append([m, m.get_shader_parameter("emission")])
 		lamps.append({ "light": l, "on": lp.on, "at": l.position, "energy": lp.energy * 1.6, "shades": shades })
 		l.light_energy = lp.energy * 1.6 if lp.on else 0.0
+	for mi: MeshInstance3D in $"../World".find_children("*", "MeshInstance3D", true, false):  # the sconces: what glows on the theater's walls (each its own material: the level shares them)
+		var c := mi.global_transform * mi.get_aabb().get_center()
+		if mi.mesh == null or c.y < 0.8 or zone_at(c) != "theater":
+			continue
+		for i in mi.mesh.get_surface_count():
+			var m := mi.mesh.surface_get_material(i)
+			if m is ShaderMaterial and m.get_shader_parameter("emission") != null and m.get_shader_parameter("emission") != Vector3.ZERO:
+				var own: ShaderMaterial = m.duplicate()
+				mi.set_surface_override_material(i, own)
+				_sconces.append([own, m.get_shader_parameter("emission")])
 	_find_portals.call_deferred(all.doors)
+	_find_steps.call_deferred()
 
 
 func _find_portals(door_list: Array) -> void:  # (after the level's been made solid: the gaps in the back wall are felt for)
@@ -264,6 +280,52 @@ func _find_portals(door_list: Array) -> void:  # (after the level's been made so
 		add_child(l)
 		_portals.append({ "light": l, "at": p[0], "n": p[1], "a": a, "b": b, "door": p[2] })
 	print("lights: %d doorways for light to come through" % _portals.size())
+
+
+func _find_steps() -> void:  # (after the level's solid: each light's set down on the aisle's floor)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	var rows := {}  # the theater's rows: z -> [x0, x1] of its seats
+	for st: Dictionary in Level.data().seats:
+		if st.kind == "theater":
+			var r: Array = rows.get_or_add(st.z, [st.x, st.x])
+			rows[st.z] = [minf(r[0], st.x), maxf(r[1], st.x)]
+	if rows.is_empty():
+		return
+	var zs: Array = rows.keys()
+	zs.sort()
+	var gap: float = zs[1] - zs[0] if zs.size() > 1 else 1.3
+	var spots: Array[float] = [zs[0] - gap * 0.5]  # the top of each aisle, a row's end each, and the foot
+	spots.append_array(zs)
+	spots.append(zs[-1] + gap * 0.6)
+	var x0: float = rows[zs[0]][0] - 0.3 - STEP.in  # (half a seat's width out from the end ones)
+	var x1: float = rows[zs[0]][1] + 0.3 + STEP.in
+	var space := get_viewport().world_3d.direct_space_state
+	var mesh := BoxMesh.new()
+	mesh.size = Vector3(0.05, 0.03, 0.22)
+	for z in spots:
+		for x in [x0, x1]:
+			var top := Vector3(x, 3.0, z)
+			var hit := space.intersect_ray(PhysicsRayQueryParameters3D.create(top, top + Vector3.DOWN * 6.0))
+			if hit.is_empty():
+				continue
+			var mat := StandardMaterial3D.new()
+			mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+			var dot := MeshInstance3D.new()  # the fixture: a sliver of amber on the floor at the seats' edge
+			dot.mesh = mesh
+			dot.material_override = mat
+			dot.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			dot.position = hit.position + Vector3(0, 0.015, 0)
+			add_child(dot)
+			var l := OmniLight3D.new()
+			l.position = hit.position + Vector3(0, 0.12, 0)
+			l.omni_range = STEP.range
+			l.omni_attenuation = 1.5
+			l.light_color = STEP.color
+			l.light_specular = 0.0
+			l.light_volumetric_fog_energy = 0.0
+			add_child(l)
+			_steps.append({ "light": l, "mat": mat })
 
 
 var _fancy := true
@@ -389,9 +451,19 @@ func _process(dt: float) -> void:  # fluorescents restriking, tube by tube (ligh
 		n.light.light_energy = n.on * k * k
 		if n.sodium:
 			n.light.light_color = Color(1.0, 0.302, 0.102).lerp(Color(1.0, 0.682, 0.29), k)  # 0xff4d1a to 0xffae4a
+	# the theater: with a film on its screen the lights go down, slowly; when it stops they come back up. The step lights
+	# are on whatever the switch says (they're how you find your seat), faint while it plays
+	var showing: bool = not video.url.is_empty() and video.audio.unit_size > 5.0  # (the theater's speakers: tapes.gd's _speaker)
+	house = move_toward(house, HOUSE.showing if showing else 1.0, dt * (1.0 - HOUSE.showing) / HOUSE.fade)
+	preload("res://room.gd").glob("uThSconce", house)
+	for sc: Array in _sconces:
+		sc[0].set_shader_parameter("emission", sc[1] * (0.25 + 0.75 * house))
+	for st in _steps:
+		st.light.light_energy = STEP.energy * house
+		st.mat.albedo_color = STEP.color * (0.35 + 0.85 * house)
 	for p in _portals:  # through each doorway, from the brighter room into the darker, as far as the door's open
-		var la: float = zone_lvl[p.a] * ZONE_K.get(p.a, 1.0)
-		var lb: float = zone_lvl[p.b] * ZONE_K.get(p.b, 1.0)
+		var la: float = zone_lvl[p.a] * ZONE_K.get(p.a, 1.0) * (house if p.a == "theater" else 1.0)
+		var lb: float = zone_lvl[p.b] * ZONE_K.get(p.b, 1.0) * (house if p.b == "theater" else 1.0)
 		var open: float = 1.0 if p.door == null else clampf(absf(p.door.a) / 1.0, 0.0, 1.0)
 		var l: SpotLight3D = p.light
 		l.light_energy = SPILL * absf(la - lb) * open

@@ -439,7 +439,7 @@ func _process(dt: float) -> void:
 		_hand.transform = _hand.transform.interpolate_with((LOOK_BACK if flipped else LOOK) if inspecting else HAND, minf(1.0, dt * 14.0))
 	hud.inventory(inv.map(func(e: Dictionary) -> Dictionary: return { "name": e.t, "used": wind_frac(e) }), inv_sel)
 	_scrub_tick(dt)
-	hud.now_playing("%s%s\n%s%s%s   hold , . rewind/FF · [ ] episode" % ["❚❚ " if video.paused else "▶ ", playing.tape.t, "%d of %d · " % [playing.idx + 1, playing.tape.e.size()] if playing.tape.e.size() > 1 else "", _clock(video.position), " / " + _clock(video.duration) if video.duration > 0.0 else ""] if playing != null and not video.url.is_empty() else "")
+	hud.now_playing("%s%s\n%s%s%s   / pause · hold , . rewind/FF · [ ] episode" % ["❚❚ " if video.paused else "▶ ", playing.tape.t, "%d of %d · " % [playing.idx + 1, playing.tape.e.size()] if playing.tape.e.size() > 1 else "", _clock(video.position), " / " + _clock(video.duration) if video.duration > 0.0 else ""] if playing != null and not video.url.is_empty() else "")
 	if playing != null and not video.url.is_empty():  # the tape winds forward as it plays
 		playing.tape.ep = playing.idx
 		playing.tape.at = video.position
@@ -527,8 +527,11 @@ func _clock(t: float) -> String:
 
 
 func _unhandled_input(e: InputEvent) -> void:
-	if e is InputEventKey and e.pressed and not e.echo and playing != null:  # the VCR's transport: [ and ] the one before and the next on the tape (, and . rewind and fast-forward, held: _scrub_tick)
+	if e is InputEventKey and e.pressed and not e.echo and playing != null:  # the VCR's transport: [ and ] the one before and the next on the tape, / pause (, and . rewind and fast-forward, held: _scrub_tick)
 		match e.physical_keycode:
+			KEY_SLASH:
+				if not video.url.is_empty():
+					video.pause()
 			KEY_BRACKETLEFT:
 				if playing.idx > 0:
 					playing.tape.at = 0.0
