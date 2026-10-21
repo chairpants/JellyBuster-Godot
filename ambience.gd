@@ -126,34 +126,6 @@ func _hear(main: Node, lights: Node, dt: float) -> void:  # the film, as heard f
 	if absf(hz / muffle.cutoff_hz - 1.0) > 0.08:  # retuned in steps, not every frame: a filter swept nonstop can blow up, and the film's sound with it
 		muffle.cutoff_hz = hz
 	(AudioServer.get_bus_effect(bus, 3) as AudioEffectAmplify).volume_db = 20.0 * log(near) / log(10.0) + WALL_DB * _walls
-	_trace(main.get_node("Video"), audio, bus, hz, near, dt)
-
-
-var _quiet := 0.0  # seconds the film's been playing with nothing coming out of its bus
-var _log_t := 0.0
-var _hitch_t := 0.0
-
-
-func _trace(video: Node, audio: AudioStreamPlayer3D, bus: int, hz: float, near: float, dt: float) -> void:  # ponytail: the dropout hunt; delete once it's found
-	if video.url.is_empty() or video.paused:
-		_quiet = 0.0
-		return
-	var out := AudioServer.get_bus_peak_volume_left_db(bus, 0)
-	var line := "film: fps %d  dt %.0f ms  playing %s  at %.1f/%.1f s  out %.0f dB  trim %.1f  cutoff %.0f Hz (%s)  amp %.1f dB  walls %.2f  near %.2f" % [
-		Engine.get_frames_per_second(), dt * 1000.0, audio.playing, video.position, video.duration,
-		out, (AudioServer.get_bus_effect(bus, 0) as AudioEffectAmplify).volume_db, (AudioServer.get_bus_effect(bus, 2) as AudioEffectLowPassFilter).cutoff_hz,
-		"on" if AudioServer.is_bus_effect_enabled(bus, 2) else "off", (AudioServer.get_bus_effect(bus, 3) as AudioEffectAmplify).volume_db, _walls, near]
-	_quiet = _quiet + dt if out < -90.0 else 0.0
-	if _quiet > 0.5 and _quiet - dt <= 0.5:
-		push_warning("SILENT " + line)
-	_hitch_t -= dt
-	if dt > 0.05 and _hitch_t <= 0.0:  # (once a second at most: a warning a frame was making the hitches worse)
-		_hitch_t = 1.0
-		push_warning("HITCH " + line)
-	_log_t += dt
-	if _log_t >= 2.0:
-		_log_t = 0.0
-		print(line)
 
 
 func _ready() -> void:
