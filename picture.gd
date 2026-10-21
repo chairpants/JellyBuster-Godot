@@ -8,8 +8,10 @@ const ROWS := [  # [key, label, min, max, step] (no min: a toggle)
 	["hue", "TINT", 0, 360, 10], ["sharpen", "SHARPEN", 0, 100, 5], ["volume", "VOLUME", 0, 200, 5],
 	["bw", "B&W"], ["scanlines", "SCANLINES"], ["pixelated", "PIXELATED"],
 	["#", "GRAPHICS"], ["fancy", "LIGHTING FX"], ["smooth", "SMOOTH EDGES"], ["scale", "RENDER %", 50, 100, 5],  # (the game's, not the TV's: room.gd's fancy(); MSAA or, off, FXAA; under 100, FSR up to the window)
+	["full", "FULL SCREEN"],  # (F11 too)
+	["#", "CONTROLS"], ["fov", "FIELD OF VIEW", 55, 100, 5], ["mouse", "MOUSE %", 25, 300, 5], ["invert", "INVERT Y"],
 ]
-const DEFAULTS := { "brightness": 100, "contrast": 100, "saturate": 100, "hue": 0, "sharpen": 0, "volume": 100, "bw": false, "scanlines": false, "pixelated": false, "fancy": true, "smooth": true, "scale": 100 }
+const DEFAULTS := { "brightness": 100, "contrast": 100, "saturate": 100, "hue": 0, "sharpen": 0, "volume": 100, "bw": false, "scanlines": false, "pixelated": false, "fancy": true, "smooth": true, "scale": 100, "full": false, "fov": 70, "mouse": 100, "invert": false }
 const FILE := "user://picture.cfg"
 const PIC := """
 uniform float uFx = 1.0; uniform float uK = 1.0;
@@ -180,6 +182,15 @@ func _apply() -> void:
 	vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR if tv.scale < 100 else Viewport.SCALING_3D_MODE_BILINEAR
 	vp.scaling_3d_scale = tv.scale / 100.0
 	$"../Room".fancy(tv.fancy)
+	var player: Node = $"../Player"
+	player.sens_k = tv.mouse / 100.0
+	player.invert_y = tv.invert
+	if player.seat_fov == player.fov:  # (not zoomed in, sat down)
+		player.seat_fov = tv.fov
+	player.fov = tv.fov
+	var mode := DisplayServer.WINDOW_MODE_FULLSCREEN if tv.full else DisplayServer.WINDOW_MODE_WINDOWED
+	if (DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN) != tv.full and not "--shot" in OS.get_cmdline_user_args():
+		DisplayServer.window_set_mode(mode)
 	for m in _mats:
 		m.set_shader_parameter("uBright", tv.brightness / 100.0)
 		m.set_shader_parameter("uContrast", tv.contrast / 100.0)
@@ -203,6 +214,10 @@ func close() -> void:
 
 
 func _unhandled_input(e: InputEvent) -> void:  # (the panel's own clicks never get here: its controls take them)
+	if e is InputEventKey and e.pressed and not e.echo and e.physical_keycode == KEY_F11:
+		_rows.full.button_pressed = not tv.full  # (and through its signal, saved)
+		get_viewport().set_input_as_handled()
+		return
 	var p_key: bool = e is InputEventKey and e.pressed and not e.echo and e.physical_keycode == KEY_P
 	var right: bool = e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_RIGHT
 	var tapes: Node = $"../Tapes"

@@ -24,8 +24,34 @@ var _seek := ColorRect.new()  # rewinding / fast-forwarding: how far through it'
 var _seek_fill := ColorRect.new()
 var _seek_text := _label(18, Color(1, 0.83, 0))
 var _caption := _label(28)  # the film's subtitles, bottom middle (on the seek bar's layer: H leaves them)
+var _keys := _label(16)  # F1: what the keys do
 var _fade := ColorRect.new()
 var _fade_text := _label(40)
+
+
+const KEYS := [
+	["WASD  mouse", "walk, look  (Shift run · Space jump · C crouch)"],
+	["Click", "a tape off the shelf, held up; again: in hand; on its gap: back"],
+	["Right-click", "put it back  ·  sat down / a film on: the picture menu"],
+	["1-9  wheel", "which of the tapes you're carrying is in hand"],
+	["E", "doors, seats, switches, lamps, ladders; at a screen: tape in / out"],
+	["E at the register", "the terminal: find a title, sections, episodes, staff pick"],
+	["R  /  I", "turn the tape over  /  a new cover for it from Jellyfin"],
+	["/  , .  [ ]", "pause  ·  hold: rewind / fast-forward  ·  episode back / on"],
+	["T  /  Y", "subtitles  /  sound track"],
+	["F", "sat down: full screen  ·  stood: fly  ·  held: time and weather"],
+	["P", "picture, graphics and controls"],
+	["L  M  J  H", "skip an hour · store sounds · the log · hide all this"],
+	["F2  F11  Esc", "server settings · full screen · free the mouse"],
+]
+
+
+func _keys_box() -> StyleBoxFlat:
+	var b := StyleBoxFlat.new()
+	b.bg_color = Color(0, 0, 0, 0.72)
+	b.set_content_margin_all(18)
+	b.set_corner_radius_all(6)
+	return b
 
 
 func _label(size: int, color := Color.WHITE) -> Label:
@@ -41,6 +67,13 @@ func _label(size: int, color := Color.WHITE) -> Label:
 
 func _ready() -> void:
 	_cross.text = "+"
+	_keys.visible = false
+	_keys.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_keys.add_theme_stylebox_override("normal", _keys_box())
+	var mono := SystemFont.new()  # (so the keys line up)
+	mono.font_names = PackedStringArray(["Consolas", "DejaVu Sans Mono", "monospace"])
+	_keys.add_theme_font_override("font", mono)
+	_keys.text = "\n".join(KEYS.map(func(k: Array) -> String: return "%s    %s" % [k[0].rpad(18), k[1]]))
 	_fade.color = Color.BLACK
 	_fade.visible = false
 	add_child(_fade)
@@ -76,6 +109,8 @@ func _ready() -> void:
 
 
 func _unhandled_input(e: InputEvent) -> void:
+	if e is InputEventKey and e.pressed and not e.echo and e.physical_keycode == KEY_F1:
+		_keys.visible = not _keys.visible
 	if e is InputEventKey and e.pressed and not e.echo and e.physical_keycode == KEY_J:
 		_log_open = not _log_open
 	if e is InputEventKey and e.pressed and not e.echo and e.physical_keycode == KEY_H:  # every word on screen, off and back (a full-screen picture, the seek bar and the picture menu stay: layers of their own)
@@ -188,7 +223,7 @@ func toast(text: String) -> void:  # up top for a moment, and into the log
 func _process(dt: float) -> void:
 	var s := get_viewport().get_visible_rect().size
 	_clock.text = "%s %s" % [Clock.weekday(), Clock.fmt_clock(Clock.h)]
-	_status.text = Library.status + "  ·  F2: server settings"
+	_status.text = Library.status + "  ·  F1: keys  ·  F2: server settings"
 	_clock.position = Vector2(16, 8)
 	_now.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_now.reset_size()
@@ -196,9 +231,10 @@ func _process(dt: float) -> void:
 	_status.position = Vector2(16, 44)
 	_toast_t -= dt
 	_toast.visible = _toast_t > 0.0
-	for l: Label in [_cross, _tip, _toast, _fade_text, _inv, _call]:
+	for l: Label in [_cross, _tip, _toast, _fade_text, _inv, _call, _keys]:
 		l.reset_size()
 	_call.position = Vector2((s.x - _call.size.x) / 2.0, s.y * 0.2)
+	_keys.position = ((s - _keys.size) / 2.0).floor()
 	_log.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_log.visible = _log_open
 	_log.reset_size()

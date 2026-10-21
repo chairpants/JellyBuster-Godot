@@ -21,6 +21,7 @@ const SEAT_EYE := 0.72  # ...and above your hips, sat down (the web game's camer
 
 var fly := false
 var seat = null  # the seat you're in (one of interact.gd's), or null
+var fov := FOV  # yours (the settings' FIELD OF VIEW: picture.gd)
 var seat_fov := FOV  # sat down, the mouse wheel zooms; getting up puts it back
 var _f_held := -1.0  # F down this long (-1: it isn't, or it's done its job); held past F_HOLD, the time and weather wheel opens
 var full := false  # zoomed right in on a playing screen: its picture edge to edge, the view held still (the wheel back out lets it go)
@@ -78,7 +79,7 @@ func _unhandled_input(e: InputEvent) -> void:
 		elif into and seat_fov <= ZOOM and _on_a_screen():
 			_full_screen(true)
 		elif not full:
-			seat_fov = clampf(seat_fov + (-2.0 if into else 2.0), ZOOM, FOV)  # (a notch of the wheel: the web game's 100 * 0.02 degrees)
+			seat_fov = clampf(seat_fov + (-2.0 if into else 2.0), ZOOM, fov)  # (a notch of the wheel: the web game's 100 * 0.02 degrees)
 	elif e is InputEventKey and e.pressed and not e.echo:
 		if e.physical_keycode == KEY_ESCAPE:
 			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -164,7 +165,7 @@ func _climb(dt: float) -> void:  # walk the step to the foot, then up and out (o
 
 func _process(dt: float) -> void:
 	if seat == null:
-		seat_fov = FOV  # walking resets the seat's zoom
+		seat_fov = fov  # walking resets the seat's zoom
 	if _f_held >= 0.0:
 		_f_held += dt
 		if _f_held >= F_HOLD:
