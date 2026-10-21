@@ -3,7 +3,7 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://c1pj3ak4e1aoo"
-path.s3tc="res://.godot/imported/vaultbuster_214.jpg-395628d37b34d4b51b435e6eb9d5621d.s3tc.ctex"
+path.bptc="res://.godot/imported/vaultbuster_214.jpg-395628d37b34d4b51b435e6eb9d5621d.bptc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
@@ -15,12 +15,12 @@ generator_parameters={
 [deps]
 
 source_file="res://world/vaultbuster_214.jpg"
-dest_files=["res://.godot/imported/vaultbuster_214.jpg-395628d37b34d4b51b435e6eb9d5621d.s3tc.ctex"]
+dest_files=["res://.godot/imported/vaultbuster_214.jpg-395628d37b34d4b51b435e6eb9d5621d.bptc.ctex"]
 
 [params]
 
 compress/mode=2
-compress/high_quality=false
+compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0
