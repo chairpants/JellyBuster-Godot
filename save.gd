@@ -66,6 +66,7 @@ func save() -> void:
 		if t.get("at", 0.0) > 0.0 or t.get("ep", 0) > 0:
 			wound[t.id] = [t.get("ep", 0), t.get("at", 0.0)]
 	cf.set_value("hands", "wound", wound)
+	cf.set_value("doors", "locked", main.get_node("Things").locked)
 	cf.set_value("screen", "muted", main.get_node("Ambience").muted)
 	cf.set_value("screen", "hud", main.get_node("HUD").visible)
 	cf.save(FILE)
@@ -98,6 +99,7 @@ func _load() -> void:
 	for i in mini(doors.size(), interact.doors.size()):
 		if interact.doors[i].has("open"):
 			interact.doors[i].open = doors[i]
+	main.get_node("Things").set_locked(cf.get_value("doors", "locked", false))
 	var by_id := {}
 	for t: Dictionary in tapes.tapes:
 		by_id[t.id] = t

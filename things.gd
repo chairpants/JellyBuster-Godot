@@ -46,6 +46,8 @@ var stool_by = null  # one of the staff has it (fetching it, carrying it, sat on
 var carrying := ""  # "stool" | "cutout" | ""
 var cooler_open := false
 var locked := false
+const OPEN_SIGN := preload("res://world/sign_open.png")  # (the level's sign says CLOSED on both faces)
+var _signs: Array = []  # the front door's sign: [its face, faces the street?, its CLOSED picture]
 var cine_on := false
 var flush_t := 0.0
 var tap := false
@@ -75,6 +77,18 @@ var _cloth: MeshInstance3D
 @onready var tapes: Node = $"../Tapes"
 @onready var sky: Node3D = $"../Sky"
 @onready var video: Node = $"../Video"
+
+
+func set_locked(on: bool) -> void:  # the deadbolt (E on it, or a saved store coming back: save.gd); the door's sign turned round with it
+	locked = on
+	_block.get_child(0).disabled = not locked
+	if _turn:
+		_turn.rotation.z = PI / 2 if locked else 0.0
+	for s: Array in _signs:  # [face, faces the street?]: the street sees OPEN while it's unlocked, CLOSED once it's locked; in here, the other side
+		var open: bool = s[1] != locked
+		var m: StandardMaterial3D = s[0].mesh.surface_get_material(0).duplicate()  # (a sign: drawn unlit, not the room's)
+		m.albedo_texture = OPEN_SIGN if open else s[2]
+		s[0].set_surface_override_material(0, m)
 
 
 func _ready() -> void:
@@ -110,6 +124,11 @@ func _ready() -> void:
 	_block.position = Vector3(0.0, 1.15, 0.1)
 	_block.add_child(shape)
 	add_child(_block)
+	for m: MeshInstance3D in $"../World".find_children("*", "MeshInstance3D", true, false):  # (on the right leaf: one face each way)
+		var tex := preload("res://level.gd").texture_of(m)
+		if tex in ["vaultbuster_45.jpg", "vaultbuster_46.jpg"]:
+			_signs.append([m, m.global_basis.z.z < 0.0, m.mesh.surface_get_material(0).albedo_texture])
+	set_locked(locked)  # (open for business: OPEN to the street)
 	if T.sink != null:  # the tap's stream: there while it's running
 		var water := CylinderMesh.new()
 		water.top_radius = 0.006
@@ -299,10 +318,7 @@ func on_e() -> bool:
 			cooler_open = not cooler_open
 			$"../Ambience".door("cooler", "open" if cooler_open else "close", Vector3(T.cooler.pivot[0], 1.1, T.cooler.pivot[2]))
 		"lock":
-			locked = not locked
-			_block.get_child(0).disabled = not locked
-			if _turn:
-				_turn.rotation.z = PI / 2 if locked else 0.0
+			set_locked(not locked)
 		"flush":
 			if flush_t <= 0.0:
 				flush_t = 6.0
