@@ -201,8 +201,8 @@ func _title_detail(t: Dictionary) -> void:
 	var nth := on.find(t) + 1
 	var series: bool = t.get("kind", "movie") == "series"
 	var eps: Array = t.get("e", [])
-	_go({ "title": ("TITLE INQUIRY - %s" % t.t.to_upper()).left(COLS - 6), "prompt": "S TO SHOW ON THE SHELF, ESC",
-		"bar": [["S", "SHOW ME", _show_me.bind(t)]], "acts": { 10: _show_me.bind(t) },
+	_go({ "title": ("TITLE INQUIRY - %s" % t.t.to_upper()).left(COLS - 6), "prompt": "S TO SHOW ON THE SHELF%s, ESC" % (", E EPISODES" if series else ""),
+		"bar": [["S", "SHOW ME", _show_me.bind(t)]] + ([["E", "EPISODES", _episodes.bind(t)]] if series else []), "acts": { 12: _show_me.bind(t) },
 		"lines": func() -> Array:
 			var st := _status(t)
 			var out: Array = ["", (" TITLE....: %s" % t.t.to_upper()).left(COLS - 2), " SECTION..: %s" % t.c.to_upper(), " YEAR.....: %s" % _year(t),
@@ -230,8 +230,29 @@ func _title_detail(t: Dictionary) -> void:
 		"submit": func(v: String) -> void:
 			if v == "S":
 				_show_me(t)
+			elif v == "E" and series:
+				_episodes(t)
 			else:
 				_msg = "INVALID SELECTION." })
+
+
+func _episodes(t: Dictionary) -> void:  # a season's episodes: picking one winds the tape to it (and plays it, if it's in the VCR)
+	var idx: Array = range(t.e.size())
+	_go(_list("EPISODES - %s" % t.t.to_upper(), "      %s%s%s" % [L("EPISODE", 48), L("RUNS", 9), "SEEN"], idx,
+		func(i: int, n: int) -> String:
+			var ep: Array = t.e[i]
+			var name: String = ep[1].substr(ep[1].find(" - ") + 3) if " - " in ep[1] else ep[1]
+			return " %s  %s %s %s%s" % [R(n, 3), L(name.to_upper(), 47), L(_hm(ep[3]) if float(ep[3]) > 0.0 else "-", 8), L("YES" if Library.played.has(ep[2]) else "", 5), "◄ HERE" if int(t.get("ep", 0)) == i else ""],
+		func(i: int) -> void:
+			t.ep = i
+			t.at = 0.0
+			if tapes.playing != null and is_same(tapes.playing.tape, t):
+				tapes.play_episode(i)
+				_msg = "PLAYING EPISODE %d." % (i + 1)
+			else:
+				_msg = "TAPE WOUND TO EPISODE %d: IT PLAYS FROM THERE." % (i + 1)))
+	_screen.pick.cur = int(t.get("ep", 0))
+	_screen.pick.page[0] = _screen.pick.cur / _screen.pick.per
 
 
 func _show_me(t: Dictionary) -> void:  # its slot lit, and off you go to it
@@ -466,7 +487,7 @@ const HEAD := "\a"  # (in front of a body line: it's a column heading)
 const MARKS := {  # what a body line's coloured by
 	"label": "^(\\s*[A-Z#][A-Z #/.'-]*?\\.{2,}:)", "page": "PAGE \\d+ OF \\d+", "good": "\\bON SHELF\\b|\\bPLAYING\\b", "where": "IN YOUR HANDS|IN THE VCR|\\bPAUSED\\b",
 	"bad": "OFF THE SHELF|\\bEMPTY\\b|\\*\\*\\*[^*]*\\*\\*\\*", "num": "\\d+",
-	"msg_bad": "INVALID|UNKNOWN|REQUIRED|NOT |NO SUCH|FIRST|LAST PAGE|CAN'T", "msg_good": "ACCEPTED|WELCOME|LIT" }
+	"msg_bad": "INVALID|UNKNOWN|REQUIRED|NOT |NO SUCH|FIRST|LAST PAGE|CAN'T", "msg_good": "ACCEPTED|WELCOME|LIT|WOUND|PLAYING EPISODE" }
 
 var _view := Control.new()
 var _font: Font

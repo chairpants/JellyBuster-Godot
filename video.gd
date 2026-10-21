@@ -46,10 +46,13 @@ var paused := false
 var tint := Color.BLACK  # the average colour of the frame on screen (black when nothing's playing): what the screens light the room with
 
 var fps := 0.0  # what's playing plays at (the source's own); 0 while ffprobe's still asking
+var audio_track := -1  # which of its sound tracks (in the file's order; -1: whichever ffmpeg picks, the default). Set before play_url
+var cues: Array = []  # the subtitles: [start, end, text], in order ([]: none)
 
 var _has_ffmpeg := false
 var _probe := {}  # { pid, pipe }: ffprobe asking the file its frame rate
-var _fps_of := {}  # url -> [its frame rate, content, its channels], once asked (a seek starts over with the same url)
+var _fps_of := {}  # url -> [its frame rate, content, each sound track's channels], once asked (a seek starts over with the same url)
+var _chans: Array = []  # each sound track's channels, in order
 var _channels := 2  # the source's sound (more than 2: DOWNMIX)
 var _loud_of := {}  # url -> [summed power, chunks]: its loudness so far, from the chunks fetched (silent ones left out)
 var _trim := 0.0  # dB on the Film bus's Amplify, heading for TARGET_LUFS
@@ -97,7 +100,8 @@ func play_url(u: String, at := 0.0) -> void:
 	_shown = 0
 	fps = _fps_of.get(u, [0.0])[0]
 	content = _fps_of.get(u, [0.0, Rect2(Vector2.ZERO, RES)])[1]
-	_channels = _fps_of.get(u, [0.0, content, 2])[2]
+	_chans = _fps_of.get(u, [0.0, content, []])[2]
+	_channels = _chans[audio_track] if audio_track >= 0 and audio_track < _chans.size() else _chans.reduce(func(m: int, c: int) -> int: return maxi(m, c), 2)
 	if fresh:  # (a film heard before starts where it was; a new one level till it's measured)
 		_trim = _trim_for(u)
 		_set_trim()
@@ -186,7 +190,7 @@ func _process(dt: float) -> void:
 		if OS.is_process_running(_probe.pid):
 			return
 		var said := {}
-		_channels = 2
+		_chans = []
 		while true:  # (a line a stream, till they stop: the first picture's, and the most channels any sound has, which ffmpeg picks)
 			var line: String = _probe.stdio.get_line().strip_edges()
 			if line.is_empty():
@@ -199,10 +203,11 @@ func _process(dt: float) -> void:
 			if stream.get("codec_type") == "video" and said.is_empty():
 				said = stream
 			elif stream.get("codec_type") == "audio":
-				_channels = maxi(_channels, stream.get("channels", "2").to_int())
+				_chans.append(stream.get("channels", "2").to_int())
 		fps = _rate("%s,%s" % [said.get("avg_frame_rate", ""), said.get("r_frame_rate", "")])
 		content = _fit(said)
-		_fps_of[url] = [fps, content, _channels]
+		_fps_of[url] = [fps, content, _chans]
+		_channels = _chans[audio_track] if audio_track >= 0 and audio_track < _chans.size() else _chans.reduce(func(m: int, c: int) -> int: return maxi(m, c), 2)
 		_probe = {}
 	# keep the queue stocked: ffmpeg fetches faster than it plays, so the next chunk's landed before this one runs out.
 	# Workers finish out of order, so only the oldest is released: that keeps the queue in order
@@ -293,7 +298,7 @@ func _start_chunk() -> bool:
 		"-vf", "scale=%d:%d:force_original_aspect_ratio=decrease:flags=lanczos,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,fps=%s" % [RES.x, RES.y, RES.x, RES.y, fps],  # the picture: uncompressed rgb24, byte for byte what Image.FORMAT_RGB8 wants
 		"-f", "rawvideo", "-pix_fmt", "rgb24", "-y", ProjectSettings.globalize_path(file),
 		# the sound: a second output of the same process (surround mixed down to stereo), measured on its way (_heard)
-		"-vn", "-af", (DOWNMIX if _channels > 2 else "") + "ebur128=metadata=1,ametadata=print:key=lavfi.r128.I:file='%s'" % _escaped(_loud(_slot)),
+		"-vn"] + (["-map", "0:a:%d?" % audio_track] if audio_track >= 0 else []) + ["-af", (DOWNMIX if _channels > 2 else "") + "ebur128=metadata=1,ametadata=print:key=lavfi.r128.I:file='%s'" % _escaped(_loud(_slot)),
 		"-ac", "2", "-ar", str(RATE), "-f", "f32le", "-y", ProjectSettings.globalize_path(_pcm(_slot)),
 	])
 	if pid == -1:
@@ -305,6 +310,13 @@ func _start_chunk() -> bool:
 	_slot = (_slot + 1) % RING
 	_src_pos += CHUNK_SEC
 	return true
+
+
+func caption() -> String:  # the subtitle for where it's got to ("" between them)
+	if _shown == 0:
+		return ""  # (not till the picture's up)
+	var i := cues.bsearch_custom(position, func(c: Array, at: float) -> bool: return c[1] < at)
+	return cues[i][2] if i < cues.size() and cues[i][0] <= position else ""
 
 
 static func _escaped(path: String) -> String:  # a path inside a filter's quotes (Windows' "C:" would end the option)

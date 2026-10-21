@@ -23,6 +23,7 @@ var _full_pic := TextureRect.new()
 var _seek := ColorRect.new()  # rewinding / fast-forwarding: how far through it'll pick up, bottom middle (seek_bar)
 var _seek_fill := ColorRect.new()
 var _seek_text := _label(18, Color(1, 0.83, 0))
+var _caption := _label(28)  # the film's subtitles, bottom middle (on the seek bar's layer: H leaves them)
 var _fade := ColorRect.new()
 var _fade_text := _label(40)
 
@@ -67,6 +68,9 @@ func _ready() -> void:
 	kept.add_child(_seek)
 	remove_child(_seek_text)
 	kept.add_child(_seek_text)
+	remove_child(_caption)
+	kept.add_child(_caption)
+	_caption.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	get_parent().add_child.call_deferred(kept)
 	seek_bar(-1.0, 0.0, "")
 
@@ -159,6 +163,15 @@ func seek_bar(at: float, length: float, text: String) -> void:  # at < 0: hidden
 	_seek_fill.size = Vector2(_seek.size.x * (clampf(at / length, 0.0, 1.0) if length > 0.0 else 0.0), _seek.size.y)
 
 
+func caption(text: String) -> void:
+	_caption.text = text
+	_caption.visible = text != ""
+
+
+func is_full_screen() -> bool:
+	return _full.visible
+
+
 func now_playing(text: String) -> void:
 	_now.text = text
 
@@ -204,3 +217,6 @@ func _process(dt: float) -> void:
 	_seek_text.reset_size()
 	_seek_text.position = Vector2((s.x - _seek_text.size.x) / 2.0, _seek.position.y - _seek_text.size.y - 4.0)
 	_toast.position = Vector2((s.x - _toast.size.x) / 2.0, s.y * 0.12)
+	_caption.custom_minimum_size.x = s.x * 0.8  # (wrapped at this width)
+	_caption.reset_size()
+	_caption.position = Vector2(s.x * 0.1, s.y - _caption.size.y - (150.0 if _bar.visible else 60.0))

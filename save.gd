@@ -69,6 +69,8 @@ func save() -> void:
 	cf.set_value("doors", "locked", main.get_node("Things").locked)
 	cf.set_value("screen", "muted", main.get_node("Ambience").muted)
 	cf.set_value("screen", "hud", main.get_node("HUD").visible)
+	cf.set_value("screen", "subs", tapes.sub_lang)
+	cf.set_value("screen", "audio", tapes.audio_lang)
 	cf.save(FILE)
 	tapes._resume_save()  # (and the VCR, to the second)
 
@@ -125,6 +127,8 @@ func _load() -> void:
 	amb.muted = cf.get_value("screen", "muted", false)
 	AudioServer.set_bus_mute(AudioServer.get_bus_index("Store"), amb.muted)
 	main.get_node("HUD").visible = cf.get_value("screen", "hud", true)
+	tapes.sub_lang = cf.get_value("screen", "subs", "")
+	tapes.audio_lang = cf.get_value("screen", "audio", "")
 	print("save: back where you left it, %s day %d" % [Clock.fmt_clock(Clock.h), Clock.day])
 
 

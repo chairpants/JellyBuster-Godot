@@ -392,6 +392,51 @@ func report(id: String, at: float, played := false) -> void:  # how far they've 
 	http.queue_free()
 
 
+func streams(id: String) -> Array:  # what's in its file: [{ Type (Video / Audio / Subtitle), Index, Language, DisplayTitle, IsTextSubtitleStream, IsExternal, ... }]
+	if demo or url.is_empty():
+		return []
+	var r = await _fetch("/Items?Ids=%s&Fields=MediaStreams" % id)
+	return r.Items[0].get("MediaStreams", []) if r is Dictionary and not r.get("Items", []).is_empty() else []
+
+
+func subtitles(id: String, index: int) -> Array:  # a subtitle track, as srt() cues ([]: none to be had). The server makes it the first time, which can take a while: kept in user://subs after
+	var path := "user://subs/%s_%d.srt" % [id, index]
+	if FileAccess.file_exists(path):
+		return srt(FileAccess.get_file_as_string(path))
+	if demo or url.is_empty():
+		return []
+	var http := HTTPRequest.new()
+	http.use_threads = true
+	add_child(http)
+	http.timeout = 120.0
+	http.request("%s/Videos/%s/%s/Subtitles/%d/0/Stream.srt" % [url, id, id, index], _auth())
+	var r: Array = await http.request_completed
+	http.queue_free()
+	if r[0] != HTTPRequest.RESULT_SUCCESS or r[1] != 200:
+		return []
+	DirAccess.make_dir_recursive_absolute("user://subs")
+	FileAccess.open(path, FileAccess.WRITE).store_buffer(r[3])
+	return srt(r[3].get_string_from_utf8())
+
+
+static func srt(text: String) -> Array:  # SubRip as cues; their markup (<i>, <font>, ASS's {\...}) dropped
+	var out: Array = []
+	var tags := RegEx.create_from_string("<[^>]*>|\\{[^}]*\\}")
+	var t := func(hms: String) -> float:
+		var p := hms.strip_edges().replace(",", ".").split(":")
+		return p[0].to_float() * 3600.0 + p[1].to_float() * 60.0 + p[2].to_float() if p.size() == 3 else 0.0
+	for block: String in text.replace("\r", "").split("\n\n", false):
+		var lines := block.strip_edges().split("\n")
+		for i in lines.size():
+			if " --> " in lines[i]:
+				var words := tags.sub("\n".join(lines.slice(i + 1)), "", true).replace("\\N", "\n").strip_edges()
+				if words != "":
+					out.append([t.call(lines[i].get_slice(" --> ", 0)), t.call(lines[i].get_slice(" --> ", 1)), words])
+				break
+	out.sort_custom(func(a: Array, b: Array) -> bool: return a[0] < b[0])
+	return out
+
+
 func remote_covers(id: String) -> Array:  # the covers Jellyfin's providers (TMDb, Fanart...) have for it, as its Identify > Images shows: [{ Url, ThumbnailUrl, ProviderName, Width, Height, Language, CommunityRating }]
 	if demo or url.is_empty():
 		return []

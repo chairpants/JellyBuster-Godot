@@ -99,6 +99,9 @@ func _verb(size: float, damping: float, wet: float, predelay: float) -> AudioEff
 	return verb
 
 
+var film_clear := false  # near enough the film's screen, and in its room, to make out the words (tapes.gd shows its subtitles then)
+
+
 func _hear(main: Node, lights: Node, dt: float) -> void:  # the film, as heard from where you are: quieter and duller the further from
 	# the screen, and through a doorway or a shut door only its low end, quietly; two rooms off, next to nothing. (Not the player's
 	# own falloff: that's before the Film bus's squeeze, which turned it back up. The player only pans it: video.gd)
@@ -126,6 +129,7 @@ func _hear(main: Node, lights: Node, dt: float) -> void:  # the film, as heard f
 	if absf(hz / muffle.cutoff_hz - 1.0) > 0.08:  # retuned in steps, not every frame: a filter swept nonstop can blow up, and the film's sound with it
 		muffle.cutoff_hz = hz
 	(AudioServer.get_bus_effect(bus, 3) as AudioEffectAmplify).volume_db = 20.0 * log(near) / log(10.0) + WALL_DB * _walls
+	film_clear = near > 0.4 and _walls < 0.5
 
 
 func _ready() -> void:

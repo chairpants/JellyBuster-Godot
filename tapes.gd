@@ -65,6 +65,9 @@ var aim_tv = null  # the screen the crosshair's on
 var playing = null  # { tape, idx }
 var inv: Array = []  # the tapes you're carrying, the one in hand among them
 var inv_sel := -1  # which of them is in hand (-1: empty-handed)
+var sub_lang := ""  # subtitles in this language when there are some (T; "": off). Kept (save.gd)
+var audio_lang := ""  # the sound track in this language when there's one (Y; "": the film's own default). Kept
+var _tracks := { "id": "", "audio": [], "subs": [], "sub": -1 }  # what's playing's sound and (text) subtitle tracks, from Jellyfin, and which subtitles are on
 
 var _resume_t := 0.0
 var _scrub := { "to": -1.0, "held": 0.0, "wait": 0.0, "dir": 1.0 }  # rewinding / fast-forwarding: to where (-1: not), how long the key's been held, the wait after it's let go
@@ -687,6 +690,8 @@ func _process(dt: float) -> void:
 		_hand.transform = _hand.transform.interpolate_with((LOOK_BACK if flipped else LOOK) if inspecting else HAND, minf(1.0, dt * 14.0))
 	hud.inventory(inv.map(func(e: Dictionary) -> Dictionary: return { "name": e.t, "used": wind_frac(e) }), inv_sel)
 	_scrub_tick(dt)
+	var heard: bool = hud.is_full_screen() or $"../Ambience".film_clear  # (close enough to the screen to hear it plainly: else it's someone else's film)
+	hud.caption(video.caption() if playing != null and not video.url.is_empty() and heard else "")
 	hud.now_playing("%s%s\n%s%s%s   / pause · hold , . rewind/FF · [ ] episode" % ["❚❚ " if video.paused else "▶ ", playing.tape.t, "%d of %d · " % [playing.idx + 1, playing.tape.e.size()] if playing.tape.e.size() > 1 else "", _clock(video.position), " / " + _clock(video.duration) if video.duration > 0.0 else ""] if playing != null and not video.url.is_empty() else "")
 	if playing != null and not video.url.is_empty():  # the tape winds forward as it plays
 		playing.tape.ep = playing.idx
@@ -791,6 +796,10 @@ func _unhandled_input(e: InputEvent) -> void:
 					play_episode(playing.idx - 1)
 			KEY_BRACKETRIGHT:
 				step_episode(1)
+			KEY_T:
+				_subs_next()
+			KEY_Y:
+				_audio_next()
 	if e is InputEventKey and e.pressed and not e.echo and e.physical_keycode == KEY_I and held != null and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:  # a new cover for it, from Jellyfin's providers
 		if Library.demo or Library.url.is_empty():
 			hud.toast("The demo library has no covers to change")
@@ -925,8 +934,56 @@ func play_episode(idx: int, tape: Dictionary = playing.tape if playing != null e
 	playing = { "tape": tape, "idx": idx }
 	tape.ep = idx
 	hud.toast("Loading: %s…" % tape.t)
+	var id: String = tape.e[idx][2]
+	var all: Array = await Library.streams(id)
+	_tracks = { "id": id, "audio": all.filter(func(m: Dictionary) -> bool: return m.Type == "Audio" and not m.get("IsExternal", false)),
+		"subs": all.filter(func(m: Dictionary) -> bool: return m.Type == "Subtitle" and m.get("IsTextSubtitleStream", false)), "sub": -1 }
+	video.audio_track = _tracks.audio.map(func(m: Dictionary) -> String: return m.get("Language", "")).find(audio_lang) if audio_lang != "" else -1
+	video.cues = []
 	video.play_episode(tape.e[idx], at)
 	_screens_show(true)
+	if sub_lang != "":
+		_subs_on(_tracks.subs.map(func(m: Dictionary) -> String: return m.get("Language", "")).find(sub_lang), false)
+
+
+func _subs_on(i: int, say := true) -> void:  # that subtitle track on (-1: off)
+	_tracks.sub = i
+	video.cues = []
+	if i < 0:
+		if say:
+			hud.toast("Subtitles off (T)")
+		return
+	var id: String = _tracks.id
+	var m: Dictionary = _tracks.subs[i]
+	if say:
+		hud.toast("Subtitles: %s… (T)" % m.get("DisplayTitle", "?"))
+	var cues: Array = await Library.subtitles(id, m.Index)
+	if _tracks.id != id or _tracks.sub != i:
+		return  # (something else on by the time they came)
+	video.cues = cues
+	if cues.is_empty() and say:
+		hud.toast("⚠ Jellyfin couldn't give those subtitles")
+
+
+func _subs_next() -> void:  # T: the next subtitle track, then off
+	if _tracks.subs.is_empty():
+		hud.toast("No subtitles on this one")
+		return
+	var i: int = _tracks.sub + 1 if _tracks.sub + 1 < _tracks.subs.size() else -1
+	sub_lang = _tracks.subs[i].get("Language", "") if i >= 0 else ""
+	_subs_on(i)
+
+
+func _audio_next() -> void:  # Y: the next sound track (from where it's got to)
+	var n: int = _tracks.audio.size()
+	if n < 2:
+		hud.toast("Only the one sound track on this one")
+		return
+	video.audio_track = (maxi(video.audio_track, 0) + 1) % n
+	var m: Dictionary = _tracks.audio[video.audio_track]
+	audio_lang = m.get("Language", "")
+	hud.toast("Sound: %s (%d of %d · Y)" % [m.get("DisplayTitle", "?"), video.audio_track + 1, n])
+	video.seek(video.position)
 
 
 func _on_started() -> void:

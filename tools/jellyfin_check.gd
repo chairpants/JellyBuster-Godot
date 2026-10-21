@@ -53,5 +53,7 @@ func _init() -> void:
 			assert(laid.reduce(func(acc: int, b: Array) -> int: return acc + b[1].filter(func(t) -> bool: return t != null).size(), 0) == p[a].size())
 		if n <= 300:
 			assert(p.k < 0)  # (a small library: smaller than VaultBuster's store)
+	var cues: Array = J.srt("2\r\n00:00:20,654 --> 00:00:23,726\r\n<font size=\"52\">[BUZZING]</font>\r\n\r\n1\n00:00:07,430 --> 00:00:11,730\n{\\an8}Two\nlines\n\n3\n00:01:00,000 --> 00:01:01,000\n<i></i>\n")  # subtitles: in order, markup gone, empty ones dropped
+	assert(cues.size() == 2 and cues[0] == [7.43, 11.73, "Two\nlines"] and cues[1][2] == "[BUZZING]", str(cues))
 	print("jellyfin_check: ok")
 	quit()
