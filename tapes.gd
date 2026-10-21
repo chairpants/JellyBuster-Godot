@@ -16,6 +16,7 @@ const REACH := 3.4
 const INV_MAX := 9
 const CELL := 0.25
 const CHUNK := 1024  # tapes per draw call (and per texture array)
+const FOCUS_BLUR := 0.1  # how soft the store goes behind a tape held up
 const HOME_C := Color(0.35, 1.0, 0.55)  # the gap the tape in hand goes back in
 const COVER := Vector2i(128, 192)  # a cover on the shelf. ponytail: uncompressed RGB, ~100 MB a chunk; VRAM-compress them if a big library runs short
 const WORKERS := 6  # covers fetching at once
@@ -73,6 +74,7 @@ var _covers: CanvasLayer = preload("res://covers.gd").new()  # I: a new cover fr
 var _dwell := { "on": null, "t": 0.0 }  # the tape the crosshair's settled on, and how long: past DWELL, its back starts drawing
 const DWELL := 0.25
 var _box := MeshInstance3D.new()
+var _focus := CameraAttributesPractical.new()  # a tape held up to read: what's past it goes soft
 var _home := MeshInstance3D.new()  # where the tape in hand lives on the shelf: its gap, glowing, so it's easy to take back
 var _home_t := 0.0
 var _quads: Array[MeshInstance3D] = []
@@ -107,6 +109,11 @@ func _ready() -> void:
 	_home.add_child(glow)
 	add_child(_home)
 	cam.add_child(_hand)
+	_focus.dof_blur_far_enabled = true
+	_focus.dof_blur_far_distance = 0.6
+	_focus.dof_blur_far_transition = 1.2
+	_focus.dof_blur_amount = 0.0
+	cam.attributes = _focus
 	var body := MeshInstance3D.new()  # the tape in hand: a black box, its cover on the front
 	body.mesh = BoxMesh.new()
 	body.mesh.size = size
@@ -158,6 +165,7 @@ func stock(store: Node) -> void:  # the store's tapes onto its shelves (store.gd
 	var mat := ShaderMaterial.new()
 	mat.shader = Shader.new()
 	mat.shader.code = _shader()
+	mat.set_shader_parameter("shine", 0.8)  # (the sleeves: shiny plastic)
 	mat.set_shader_parameter("size", size)
 	for i in tapes.size():
 		var t: Dictionary = tapes[i]
@@ -512,6 +520,8 @@ func put_back() -> void:  # back into its own shelf slot
 
 func _process(dt: float) -> void:
 	_saver_tick(dt)
+	_focus.dof_blur_amount = move_toward(_focus.dof_blur_amount, FOCUS_BLUR if held != null and inspecting else 0.0, dt * FOCUS_BLUR * 4.0)
+	_focus.dof_blur_far_enabled = _focus.dof_blur_amount > 0.0
 	_home.visible = held != null
 	if _home.visible:
 		_home.transform = held.xf

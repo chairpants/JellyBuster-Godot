@@ -49,6 +49,7 @@ const float VID_THEATER = 0.3;   // the theater's screen: on everything in the h
 global uniform vec4 uVid;       // the picture that's playing: its colour, averaged (rgb), how much it's on (a). It lights the room it's in, over whatever else is (lights.gd)
 global uniform vec3 uVidAt;     // the lounge TV, a little out from its face
 uniform vec4 albedo : source_color = vec4(1.0);
+uniform float shine = 0.0;      // 0 matte; up to 1, a plastic sleeve: a glint of the real lights (ponytail: no SSR; tile and plastic give back a few percent, too faint to see over what it cost)
 uniform sampler2D tex : source_color, FILTER, repeat_enable;
 uniform bool use_tex = false;
 uniform bool use_vcol = false;
@@ -112,18 +113,20 @@ void fragment() {
 	}
 	vAlb = a.rgb;
 	ALBEDO = a.rgb * rl * 0.3183099 * (1.0 - vFog);   // the room's light, as the web game's Lambert has it (over pi): what the white ambient light shows, less what SSAO takes
-	ROUGHNESS = 1.0;
-	SPECULAR = 0.0;
+	ROUGHNESS = 1.0 - 0.75 * shine;
+	SPECULAR = shine;
 	EMISSION = emission * (use_emission_tex ? texture(emission_tex, UV).rgb : vec3(1.0)) * (1.0 - vFog) + uFog.rgb * vFog;
 }
 
 void light() {   // the real lights, on the surface's own colour (ALBEDO's already the room's light on it)
 	if (!(LIGHT_IS_DIRECTIONAL && vIn > 0.5)) {
 		SPECULAR_LIGHT += vAlb * LIGHT_COLOR * ATTENUATION * max(dot(NORMAL, LIGHT), 0.0) * 0.3183099 * (1.0 - vFog);
+		SPECULAR_LIGHT += LIGHT_COLOR * ATTENUATION * pow(max(dot(NORMAL, normalize(LIGHT + VIEW)), 0.0), 60.0) * 0.6 * shine * (1.0 - vFog);   // the glint
 	}
 }
 """
 
+const FLOOR_SHINE := { "vaultbuster_73.jpg": 0.6, "vaultbuster_0.jpg": 0.5 }  # the level's hard floors, by their pictures
 const TONE_EXPOSURE := 1.25  # AgX sits a little darker in the middle than the linear it replaced: this brings it back up
 
 var _shaders := {}
@@ -156,6 +159,10 @@ func _enter_tree() -> void:  # (before anything's _ready: tapes.gd keeps hold of
 	var split: Array = preload("res://lights.gd").FLOOR_SPLIT
 	glob("uZoneSplit", Vector2(split[0], split[1] + Level.dz))  # (the same lines the ceiling panels are sorted by: lights.gd's zone_at)
 	var swapped := light($"../World")
+	for mi: MeshInstance3D in $"../World".find_children("*", "MeshInstance3D", true, false):  # the hard floors: the tile by the door and the counter, and the hall's
+		var gloss: float = FLOOR_SHINE.get(preload("res://level.gd").texture_of(mi), 0.0)
+		if gloss > 0.0:
+			mi.mesh.surface_get_material(0).set_shader_parameter("shine", gloss)
 	print("room light: %d surfaces, %d materials, %d shaders" % [swapped, _made.size(), _shaders.size()])
 	_moon_c = fixed.uMoonC
 

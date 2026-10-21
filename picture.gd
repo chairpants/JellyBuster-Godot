@@ -7,8 +7,9 @@ const ROWS := [  # [key, label, min, max, step] (no min: a toggle)
 	["brightness", "BRIGHTNESS", 50, 150, 5], ["contrast", "CONTRAST", 50, 150, 5], ["saturate", "COLOR", 0, 200, 5],
 	["hue", "TINT", 0, 360, 10], ["sharpen", "SHARPEN", 0, 100, 5], ["volume", "VOLUME", 0, 200, 5],
 	["bw", "B&W"], ["scanlines", "SCANLINES"], ["pixelated", "PIXELATED"],
+	["#", "GRAPHICS"], ["fancy", "LIGHTING FX"], ["smooth", "SMOOTH EDGES"], ["scale", "RENDER %", 50, 100, 5],  # (the game's, not the TV's: room.gd's fancy(); MSAA or, off, FXAA; under 100, FSR up to the window)
 ]
-const DEFAULTS := { "brightness": 100, "contrast": 100, "saturate": 100, "hue": 0, "sharpen": 0, "volume": 100, "bw": false, "scanlines": false, "pixelated": false }
+const DEFAULTS := { "brightness": 100, "contrast": 100, "saturate": 100, "hue": 0, "sharpen": 0, "volume": 100, "bw": false, "scanlines": false, "pixelated": false, "fancy": true, "smooth": true, "scale": 100 }
 const FILE := "user://picture.cfg"
 const PIC := """
 uniform float uFx = 1.0; uniform float uK = 1.0;
@@ -99,6 +100,9 @@ func _ready() -> void:
 		l.text = r[1]
 		l.custom_minimum_size.x = 120
 		row.add_child(l)
+		if r[0] == "#":  # (a heading)
+			l.add_theme_color_override("font_color", Color("#7dff9a"))
+			continue
 		if r.size() == 2:
 			var cb := CheckBox.new()
 			cb.toggled.connect(func(on: bool) -> void: _put(r[0], on))
@@ -170,6 +174,12 @@ func _put(k: String, v: Variant) -> void:
 
 
 func _apply() -> void:
+	var vp := get_viewport()
+	vp.msaa_3d = Viewport.MSAA_4X if tv.smooth else Viewport.MSAA_DISABLED
+	vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_DISABLED if tv.smooth else Viewport.SCREEN_SPACE_AA_FXAA
+	vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR if tv.scale < 100 else Viewport.SCALING_3D_MODE_BILINEAR
+	vp.scaling_3d_scale = tv.scale / 100.0
+	$"../Room".fancy(tv.fancy)
 	for m in _mats:
 		m.set_shader_parameter("uBright", tv.brightness / 100.0)
 		m.set_shader_parameter("uContrast", tv.contrast / 100.0)
