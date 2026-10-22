@@ -33,6 +33,9 @@ extends SceneTree
 ## breakroom: the tall block's base course out of the break room (it ran on along the block's side, through the wall,
 ##   where the back rooms meet it: a grey kerb along the room's west wall); the table's top banded in chrome; a microwave on
 ##   its cart in the corner by the west wall, its door, window, keypad and handle, plates and a roll of towels under it
+## aisles: the hanging TVs over the sales floor (a box, a smaller box behind, a screen) made CRTs: the tube's housing
+##   tapering back to a neck, a bezel round the picture with its badge and a power light, vents in the top, a mounting
+##   plate behind; and the ceiling given its sprinkler heads, a grid of them clear of the light panels
 ## restroom: the floors either side of the wall between the restroom and the break room meeting under it, square (boh
 ##   moved that wall over, but only the floors' far corners with it: a wedge of the break room's floor in the restroom).
 ##
@@ -106,6 +109,8 @@ func _init() -> void:
 				quit(1)
 				return
 			_breakroom()
+		"aisles":
+			_aisles()
 		"railings":
 			if not "theater" in done:
 				push_error("remodel: railings go after theater")
@@ -138,7 +143,7 @@ func _init() -> void:
 	var err := packed.pack(w)
 	if err == OK:
 		err = ResourceSaver.save(packed, WORLD, ResourceSaver.FLAG_COMPRESS)  # (as it came: compressed)
-	if not section in ["strip", "restroom", "railings", "hall", "roof", "closet", "stairwell", "breakroom"]:  # (the level only: the data's as it was)
+	if not section in ["strip", "restroom", "railings", "hall", "roof", "closet", "stairwell", "breakroom", "aisles"]:  # (the level only: the data's as it was)
 		var f := FileAccess.open(DATA, FileAccess.WRITE)
 		f.store_string(_json(data))
 		f.close()
@@ -389,6 +394,110 @@ func _breakroom() -> void:
 	# under it: paper plates and a roll of towels
 	cylinder("boh", "paper plates", c + Vector3(-0.12, 0.215, 0.0), 0.12, 0.05, Vector3.UP, Color("f4f1e8"))
 	cylinder("boh", "towel roll", c + Vector3(0.14, 0.24, 0.0), 0.06, 0.2, Vector3.FORWARD, Color("f4f1e8"))
+
+
+func _aisles() -> void:
+	var sets := 0
+	for g: Node3D in w.find_children("group of *", "Node3D", true, false):
+		var body: MeshInstance3D = null
+		var rear: MeshInstance3D = null
+		for c in g.get_children():
+			if c is MeshInstance3D and String(c.name).begins_with("box 0_62 x 0_50"):
+				body = c
+			elif c is MeshInstance3D and String(c.name).begins_with("box 0_48 x 0_38"):
+				rear = c
+		if body == null or rear == null:
+			continue
+		_crt(g, body, rear)
+		sets += 1
+	print("remodel: %d hanging TVs made over" % sets)
+	# sprinkler heads: a grid over the sales floor, each clear of the light panels
+	var f: Array = data.lights.boxes.floor  # x0, x1, back wall z, ceiling
+	var panels := []  # their triangles, flat (x, z)
+	for m: MeshInstance3D in w.get_node("store").find_children("*", "MeshInstance3D", true, false):
+		if m.mesh == null or m.mesh.get_surface_count() != 1:
+			continue
+		var mat := m.mesh.surface_get_material(0)
+		var b := m.global_transform * m.get_aabb()
+		if mat is StandardMaterial3D and mat.shading_mode == BaseMaterial3D.SHADING_MODE_UNSHADED and b.size.y < 0.06 and b.position.y > 2.3:
+			var faces := m.mesh.get_faces()
+			for i in range(0, faces.size(), 3):
+				var t := []
+				for k in 3:
+					var v := m.global_transform * faces[i + k]
+					t.append(Vector2(v.x, v.z))
+				panels.append(t)
+	var head := 0
+	var x: float = f[0] + 1.6
+	while x < f[1] - 1.0:
+		var z := 1.6
+		while z < f[2] - 1.0:
+			var spot := Vector2(x, z)
+			var clear := true
+			for d: Vector2 in [Vector2.ZERO, Vector2(0.35, 0), Vector2(-0.35, 0), Vector2(0, 0.35), Vector2(0, -0.35)]:
+				for t: Array in panels:
+					if Geometry2D.point_is_inside_triangle(spot + d, t[0], t[1], t[2]):
+						clear = false
+			if clear:
+				var y: float = f[3]
+				cylinder("store", "sprinkler escutcheon", Vector3(x, y - 0.004, z), 0.045, 0.008, Vector3.UP, Color("e6e8ea"))
+				cylinder("store", "sprinkler body", Vector3(x, y - 0.03, z), 0.012, 0.045, Vector3.UP, Color("c9a24a"))
+				cylinder("store", "sprinkler bulb", Vector3(x, y - 0.06, z), 0.005, 0.022, Vector3.UP, Color("d7262e"))
+				cylinder("store", "sprinkler deflector", Vector3(x, y - 0.075, z), 0.022, 0.004, Vector3.UP, Color("c9a24a"))
+				head += 1
+			z += 3.0
+		x += 3.0
+	print("remodel: %d sprinkler heads" % head)
+
+
+func _crt(g: Node3D, body: MeshInstance3D, rear: MeshInstance3D) -> void:  # in the set's own frame (the picture to +z): what it's made of, round what it was
+	var shell: Material = body.mesh.surface_get_material(0)
+	var dark := _mat(Color("1b1c1f"))
+	var trim := _mat(Color("34363b"))
+	var add := func(mesh: Mesh, name: String, xf: Transform3D, m: Material) -> MeshInstance3D:
+		var mi := MeshInstance3D.new()
+		mi.mesh = mesh
+		mi.name = name
+		mi.material_override = m
+		g.add_child(mi, true)
+		mi.owner = w
+		mi.transform = xf
+		return mi
+	var box := func(size: Vector3) -> BoxMesh:
+		var b := BoxMesh.new()
+		b.size = size
+		return b
+	# the tube's housing: from the cabinet's back (0.56 by 0.44) tapering to its neck (0.3 by 0.22), 0.26 deep
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var z0 := -0.15
+	var z1 := -0.41
+	var a := [Vector3(-0.28, -0.22, z0), Vector3(0.28, -0.22, z0), Vector3(0.28, 0.22, z0), Vector3(-0.28, 0.22, z0)]
+	var b := [Vector3(-0.15, -0.11, z1), Vector3(0.15, -0.11, z1), Vector3(0.15, 0.11, z1), Vector3(-0.15, 0.11, z1)]
+	for i in 4:
+		var j := (i + 1) % 4
+		for v: Vector3 in [a[i], b[i], b[j], a[i], b[j], a[j]]:
+			st.add_vertex(v)
+	for v: Vector3 in [b[0], b[3], b[2], b[0], b[2], b[1]]:
+		st.add_vertex(v)
+	st.generate_normals()
+	add.call(st.commit(), "crt housing", Transform3D.IDENTITY, shell)
+	rear.free()
+	# the bezel round the picture (0.5 by 0.38), proud of the cabinet's face; its badge; its power light
+	var zf := 0.152
+	for e: Array in [[0.0, 0.215, 0.6, 0.05], [0.0, -0.215, 0.6, 0.05], [-0.275, 0.0, 0.05, 0.48], [0.275, 0.0, 0.05, 0.48]]:
+		add.call(box.call(Vector3(e[2], e[3], 0.012)), "crt bezel", Transform3D(Basis.IDENTITY, Vector3(e[0], e[1], zf)), trim)
+	add.call(box.call(Vector3(0.09, 0.016, 0.004)), "crt badge", Transform3D(Basis.IDENTITY, Vector3(0.0, -0.215, zf + 0.008)), _mat(Color("a9aeb3")))
+	var led := StandardMaterial3D.new()
+	led.albedo_color = Color(0.2, 1.0, 0.3)
+	led.emission_enabled = true
+	led.emission = Color(0.2, 1.0, 0.3)
+	led.emission_energy_multiplier = 0.8
+	add.call(box.call(Vector3(0.01, 0.01, 0.004)), "crt power light", Transform3D(Basis.IDENTITY, Vector3(0.24, -0.215, zf + 0.008)), led)
+	# vents across the top, toward the back; and a mounting plate on the neck
+	for k in 6:
+		add.call(box.call(Vector3(0.36, 0.004, 0.012)), "crt vent", Transform3D(Basis.IDENTITY, Vector3(0.0, 0.251, -0.11 + k * 0.025)), dark)
+	add.call(box.call(Vector3(0.22, 0.16, 0.02)), "crt mount plate", Transform3D(Basis.IDENTITY, Vector3(0.0, 0.0, z1 - 0.01)), dark)
 
 
 const HALL := { "x": [2.0, 9.4], "z": [28.1, 29.7], "base": Color("2e2f31"), "door": Color("d4d6d8"), "trim": Color("bfc3c7"), "steel": Color("b8bcc0"), "cork": Color("b0875a"), "red": Color("c8102e") }

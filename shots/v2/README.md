@@ -63,3 +63,18 @@ microwave on its cart in the corner (door, window, keypad, handle; plates and a 
 | ![](breakroom/bench_before.png) | ![](breakroom/bench_after.png) |
 | ![](breakroom/door_before.png) | ![](breakroom/door_after.png) |
 | ![](breakroom/kitchen_before.png) | ![](breakroom/kitchen_after.png) |
+
+## The sales floor: its TVs and ceiling (`aisles`)
+
+The thirteen hanging TVs (a box, a smaller box behind it, a screen) made CRTs: the tube's housing tapering back to its
+neck, a bezel round the picture with a badge and a power light, vents along the top, a mounting plate behind. The
+ceiling given its sprinkler heads, a grid of them kept clear of the light panels. (The shelving itself is laid out by
+the game as it opens, not the level: `store.gd`.)
+
+| Before | After |
+|---|---|
+| ![](aisles/tv_before.png) | ![](aisles/tv_after.png) |
+| ![](aisles/tvback_before.png) | ![](aisles/tvback_after.png) |
+| ![](aisles/down_before.png) | ![](aisles/down_after.png) |
+| ![](aisles/end_before.png) | ![](aisles/end_after.png) |
+| ![](aisles/ceiling_before.png) | ![](aisles/ceiling_after.png) |
