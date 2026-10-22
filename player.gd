@@ -42,7 +42,7 @@ func _ready() -> void:
 	if not ("--shot" in args or "--snapshot" in args):  # (not for --shot: it'd take the mouse off whoever's at the machine)
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 		return
-	# godot --path . -- --demo --shot [--at=x,y,z,yaw,pitch] (degrees) [--hour=h] [--weather=rain|snow|fog[,1 wild]] [--lights] [--off=zone] [--flash] [--walk=s]: shot.png from there, a few seconds in, then quits
+	# godot --path . -- --demo --shot [--at=x,y,z,yaw,pitch] (degrees) [--hour=h] [--weather=rain|snow|fog[,1 wild]] [--lights] [--off=zone] [--flash] [--film] [--walk=s]: shot.png from there, a few seconds in, then quits
 	# (--snapshot instead: the whole store as built, as a scene for the editor: tools/snapshot.gd)
 	for a in args:
 		if a.begins_with("--hour="):
@@ -63,6 +63,8 @@ func _ready() -> void:
 			wx._bolt.light_volumetric_fog_energy = 2.0 * (1.0 - $"../Sky"._inside)
 			$"../Lights".flash = 1.0
 			$"../WorldEnvironment".environment.background_energy_multiplier = 5.0
+		elif a == "--film":  # the projector running, its beam the colour of a picture (no server needed)
+			$"../Video".tint = Color(0.75, 0.7, 0.62)
 		elif a.begins_with("--off="):  # and that one's off
 			$"../Lights".put_zone.call_deferred(a.trim_prefix("--off="), false)
 		elif a.begins_with("--at="):

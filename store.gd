@@ -41,6 +41,8 @@ var _body := StaticBody3D.new()
 var _texts := {}  # [text, font, size, colour, outline] -> { vp, mat }: lettering drawn to a picture (_bake_texts), on quads the room's light falls on like the rest (a Label3D lights itself)
 var _strip_font := SystemFont.new()
 var _ends := {}  # each end panel: where, which way it faces, how wide, its genres
+var _merged := {}  # lettering that comes again and again (the price tags): its key -> a SurfaceTool of every copy, one mesh at the end
+var _rate := { "new": 3.99, "catalog": 1.99 }  # a rental's price: the level's, at the register
 
 
 static func front_at(y: float, spec: Dictionary) -> float:  # the gondola's sloped face: how far out it is at height y
@@ -188,6 +190,7 @@ func _ready() -> void:
 		return
 	_strip_font.font_names = PackedStringArray(["Arial Black", "Arial", "sans-serif"])
 	_strip_font.font_weight = 900
+	_rate = get_node("/root/Level").data().things.register.get("rate", _rate)
 	var all := runs(p.k)
 	for a: String in ["wall", "kids", "classics", "tv"]:
 		var bays := lay(p[a], all[a])
@@ -195,6 +198,11 @@ func _ready() -> void:
 		for r: Dictionary in all[a]:
 			bi = _run(r, bays, bi, a)
 	_end_signs()
+	for key: Array in _merged:
+		var tags := MeshInstance3D.new()
+		tags.mesh = _merged[key].commit()
+		tags.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(tags)
 	for m: String in _parts:
 		var mi := MeshInstance3D.new()
 		mi.mesh = _parts[m].commit()
@@ -274,7 +282,17 @@ func _bay(xf: Transform3D, spec: Dictionary, bay: Array, area: String) -> void:
 		_box("strip", xf, Vector3(x, y, 0), Vector3(0.004, sh, spec.len - 0.1))
 		_text(names[r].to_upper(), _strip_font, 64, Color("#00349c"), 0, minf(0.0018 * sh / 0.16, 1.4 / maxf(1.0, names[r].length() * 0.62 * 64)), xf * Transform3D(Basis(Vector3.UP, PI / 2), Vector3(x + 0.004, y, 0)))
 	var tapes: Array = bay[1]
-	var tilt := Basis(Vector3.BACK, LEAN) * Basis(Vector3.UP, PI / 2)  # the box's cover (+z) to the shelf's front (+x), tipped back
+	var price := ("NEW $%.2f" % _rate.new) if area == "wall" else ("$%.2f" % _rate.catalog)  # a price tag at the left of each stocked shelf's edge: the new releases' yellow, the rest white
+	var px := minf(0.0012, 0.07 / (price.length() * 0.7 * 24))
+	for r in spec.rows:
+		if not tapes.slice((spec.rows - 1 - r) * spec.per_row, (spec.rows - r) * spec.per_row).any(func(t) -> bool: return t != null):
+			continue
+		var d := front_at(spec.board_y[r], spec)
+		var at := Vector3(d + 0.003, spec.board_y[r], spec.len / 2.0 - 0.16)
+		var face := Basis(Vector3.UP, PI / 2)  # (+z out over the shelf's edge)
+		_card(xf * Transform3D(face, at), Vector3(0.085, 0.034, 0.003), Color("#ffd400") if area == "wall" else Color.WHITE)
+		_text(price, _strip_font, 24, Color("#00349c"), 0, px, xf * Transform3D(face, at + Vector3(0.0025, 0, 0)), true)
+	var tilt :=Basis(Vector3.BACK, LEAN) * Basis(Vector3.UP, PI / 2)  # the box's cover (+z) to the shelf's front (+x), tipped back
 	var n := Vector3(cos(LEAN), sin(LEAN), 0)
 	for k in tapes.size():
 		if tapes[k] == null:
@@ -375,7 +393,7 @@ func _card(xf: Transform3D, size: Vector3, colour: Color) -> void:  # (into the 
 	_part(colour.to_html(false), xf.scaled_local(size), _unit)
 
 
-func _text(text: String, font: Font, size: int, colour: Color, outline: int, px: float, xf: Transform3D) -> void:  # px: metres a font pixel, as Label3D's pixel_size
+func _text(text: String, font: Font, size: int, colour: Color, outline: int, px: float, xf: Transform3D, merge := false) -> void:  # px: metres a font pixel, as Label3D's pixel_size; merge: one mesh for every copy (_merged)
 	var key := [text, font, size, colour, outline]
 	if not _texts.has(key):
 		var vp := SubViewport.new()  # (drawn at twice the size: crisp up close)
@@ -403,6 +421,13 @@ func _text(text: String, font: Font, size: int, colour: Color, outline: int, px:
 	var mesh := ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, quad.get_mesh_arrays())
 	mesh.surface_set_material(0, t.mat)
+	if merge:
+		if not _merged.has(key):
+			_merged[key] = SurfaceTool.new()
+			_merged[key].begin(Mesh.PRIMITIVE_TRIANGLES)
+			_merged[key].set_material(t.mat)
+		_merged[key].append_from(mesh, 0, xf)
+		return
 	var mi := MeshInstance3D.new()
 	mi.mesh = mesh
 	mi.transform = xf

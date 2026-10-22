@@ -27,6 +27,9 @@ var _glows: Array[Light3D] = []  # the screens: lit with the colour of what's on
 var _glow := Color.BLACK
 var _beam: SpotLight3D  # the projector's: from the booth's port to the screen, a shaft in the haze the colour of the picture, heavily averaged
 var _beam_c := Color.BLACK
+var _lamp: OmniLight3D  # the projector's lamp house, glowing through its vents while it runs
+var _port: StandardMaterial3D  # the port seen from the house: lit while it's running
+var _motes: GPUParticles3D  # dust in the beam: lit by it, dark everywhere else
 var _panels := {}  # zone -> [the material of each ceiling panel in it]
 var _boxes := {}
 var plates := {}  # zone -> the zones that share its switch plate
@@ -54,7 +57,8 @@ var flash := 0.0
 const SCREEN_GAIN := 7.0  # the TV's light, for a full-white frame
 const THEATER_GLOW := { "gain": 9.0, "out": 2.0 }  # the theater screen's light on the house: not by its size (that blew the stage and curtains out, and the bloom off them washed the picture), and from a little way out, clear of what's round it
 const PORT := [-1.42, 4.2, 35.17]  # the projection booth's port, high in the auditorium's back wall (the level's lens)
-const BEAM := { "angle": 15.0, "energy": 0.4, "fog": 3.0, "follow": 1.2, "clear": 2.5 }  # wide enough for the screen's corners; barely lights what it lands on, but shows in the haze; follow: how fast its colour chases the picture's (slow: an average); clear: the haze-free stretch before the screen
+const BEAM := { "angle": 15.0, "energy": 0.4, "fog": 4.5, "follow": 1.2, "clear": 2.5, "flicker": 0.08, "motes": 400 }  # wide enough for the screen's corners; barely lights what it lands on, but shows in the haze; follow: how fast its colour chases the picture's (slow: an average); clear: the haze-free stretch before the screen; flicker: the shutter's, a little; motes: dust drifting through it
+const LAMP_HOUSE := { "at": [-1.42, 4.3, 33.78], "color": Color(0.85, 0.9, 1.0), "energy": 0.9, "range": 2.6 }  # the xenon lamp's light out of its vents, cold white
 const PANEL_ON := Color(1.31, 1.33, 1.35)  # 0xf8fbff, and brighter than white: a lit panel blooms (room.gd)
 const SPILL := 0.55  # light through a doorway, for a fully lit room next to a dark one
 const SPILL_OUT := { "energy": 1.6, "range": 9.0 }  # the lit store's light out onto the sidewalk and the lot, at full dark
@@ -211,6 +215,27 @@ func _ready() -> void:
 			clear.position = to + dir * (BEAM.clear / 2.0)
 			clear.rotation.y = sc.ry
 			add_child(clear)
+			_lamp = OmniLight3D.new()
+			_lamp.position = Vector3(LAMP_HOUSE.at[0], LAMP_HOUSE.at[1], Level.z(LAMP_HOUSE.at[2]))
+			_lamp.omni_range = LAMP_HOUSE.range
+			_lamp.light_color = LAMP_HOUSE.color
+			_lamp.light_specular = 0.0
+			_lamp.light_volumetric_fog_energy = 0.0
+			_lamp.visible = false
+			add_child(_lamp)
+			var port := MeshInstance3D.new()  # the port's glass from the house side, lit
+			port.mesh = QuadMesh.new()
+			port.mesh.size = Vector2(0.32, 0.24)
+			_port = StandardMaterial3D.new()
+			_port.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+			_port.albedo_color = Color.BLACK
+			port.material_override = _port
+			port.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			port.position = _beam.position + _beam.basis.z * -0.02
+			port.basis = _beam.basis.rotated(_beam.basis.y, PI)  # (facing the house)
+			add_child(port)
+			_motes = _dust(_beam.position, to)
+			add_child(_motes)
 	for m: Dictionary in all.minis:  # the monitors over the aisles: a little pool under each
 		var g := OmniLight3D.new()
 		g.position = Vector3(m.p[0], m.p[1], m.p[2]) + Basis(Quaternion(m.q[0], m.q[1], m.q[2], m.q[3])).z * 0.25
@@ -250,6 +275,58 @@ func _ready() -> void:
 				_sconces.append([own, m.get_shader_parameter("emission")])
 	_find_portals.call_deferred(all.doors)
 	_find_steps.call_deferred()
+
+
+const DUST := "shader_type spatial;
+render_mode unshaded, blend_add, cull_disabled, shadows_disabled, depth_draw_never;
+uniform vec3 apex;  // the port
+uniform vec3 axis;  // toward the screen
+uniform float cos_in;  // the beam's edge
+uniform vec3 color;  // what it's showing
+varying float lit;
+void vertex() {  // (facing you)
+	MODELVIEW_MATRIX = VIEW_MATRIX * mat4(INV_VIEW_MATRIX[0], INV_VIEW_MATRIX[1], INV_VIEW_MATRIX[2], MODEL_MATRIX[3]);
+	vec3 d = MODEL_MATRIX[3].xyz - apex;
+	lit = smoothstep(cos_in, cos_in + 0.004, dot(normalize(d), axis)) * sin(3.14159 * INSTANCE_CUSTOM.y) / (1.0 + 0.25 * length(d));
+}
+void fragment() {
+	ALBEDO = color * lit * max(0.0, 1.0 - length(UV - 0.5) * 2.0);
+}"
+
+
+func _dust(from: Vector3, to: Vector3) -> GPUParticles3D:  # a box round the beam, filled with slow dust: only what's in the beam is lit (no ambient on it), the rest is nothing
+	var p := GPUParticles3D.new()
+	var len := from.distance_to(to) - BEAM.clear
+	var half := len * tan(deg_to_rad(BEAM.angle))
+	p.amount = BEAM.motes
+	p.lifetime = 10.0
+	p.preprocess = 10.0
+	p.position = from.lerp(to, 0.5 * len / from.distance_to(to))
+	p.basis = Basis.looking_at((to - from).normalized())
+	p.visibility_aabb = AABB(Vector3(-half, -half, -len / 2.0), Vector3(half, half, len) * Vector3(2, 2, 1))
+	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var pm := ParticleProcessMaterial.new()
+	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
+	pm.emission_box_extents = Vector3(half, half, len / 2.0)
+	pm.gravity = Vector3.ZERO
+	pm.direction = Vector3.UP
+	pm.spread = 180.0
+	pm.initial_velocity_min = 0.01
+	pm.initial_velocity_max = 0.05
+	p.process_material = pm
+	var q := QuadMesh.new()
+	q.size = Vector2(0.012, 0.012)
+	var sh := Shader.new()
+	sh.code = DUST
+	var m := ShaderMaterial.new()
+	m.shader = sh
+	q.material = m
+	m.set_shader_parameter("apex", from)
+	m.set_shader_parameter("axis", (to - from).normalized())
+	m.set_shader_parameter("cos_in", cos(deg_to_rad(BEAM.angle)))
+	p.draw_pass_1 = q
+	p.emitting = false
+	return p
 
 
 func _find_portals(door_list: Array) -> void:  # (after the level's been made solid: the gaps in the back wall are felt for)
@@ -447,7 +524,7 @@ func zone_at(p: Vector3) -> String:  # which switch lights this spot ("" outdoor
 			return "stairwell"  # the stairs up to the booth, the whole height of them
 		if p.y > _boxes.tall[0] and p.z >= _boxes.booth[2]:  # the projection booth, over the lobby's back
 			return "booth"
-		return "stairwell" if p.x > _boxes.shaft[0] and p.z > _boxes.shaft[1] else "lobby"  # (the stairs up to it)
+		return "lobby"
 	if p.x > th[0] and p.x < th[1] and p.z >= th[2] and p.z < th[3]:
 		return "theater"
 	return ""
@@ -571,6 +648,14 @@ func _process(dt: float) -> void:  # fluorescents restriking, tube by tube (ligh
 		_beam_c = _beam_c.lerp(video.tint, minf(1.0, dt * BEAM.follow))
 		_beam.light_color = _beam_c
 		_beam.visible = _beam_c.v > 0.004
+		_beam.light_energy = BEAM.energy * (1.0 + BEAM.flicker * randf_range(-1.0, 1.0))
+		_motes.emitting = _beam.visible
+		_motes.visible = _beam.visible
+		_motes.draw_pass_1.material.set_shader_parameter("color", Vector3(_beam_c.r, _beam_c.g, _beam_c.b) * 1.5)
+		var running: bool = not video.url.is_empty() or _beam.visible  # (the lamp's struck while a film's in, paused or not)
+		_lamp.visible = running
+		_lamp.light_energy = LAMP_HOUSE.energy * (1.0 + 0.5 * BEAM.flicker * randf_range(-1.0, 1.0))
+		_port.albedo_color = (_beam_c * 2.5 + Color(0.15, 0.15, 0.17) * float(running)) * (1.0 + BEAM.flicker * randf_range(-1.0, 1.0))
 	for zone: String in _warm.keys():
 		var w: Dictionary = _warm[zone]
 		w.t += dt

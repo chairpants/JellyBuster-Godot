@@ -2,7 +2,8 @@ extends Node
 ## The keyboard's media keys, and the desktop's own player controls (KDE's media applet, GNOME's, playerctl). On Linux
 ## those mostly never come to the window as keys: the desktop keeps them and hands them over D-Bus (MPRIS) to whatever
 ## player says it's playing. mpris.py is that player for us: what the VCR's doing goes to it a line at a time, and
-## what it's asked to do comes back (_heard), to tapes.gd's transport like the VCR's own keys.
+## what it's asked to do comes back (_heard), to tapes.gd's transport like the VCR's own keys. On Windows smtc.ps1 is
+## the same thing, in Windows' own media controls (the media keys whatever has the focus, the volume flyout's player).
 
 const EVERY := 1.0  # how often it's told where the tape's got to (it runs Position on between)
 
@@ -17,11 +18,14 @@ var _t := 0.0
 
 func _ready() -> void:
 	var args := OS.get_cmdline_user_args()
-	if OS.get_name() != "Linux" or "--shot" in args or "--snapshot" in args:
+	if OS.get_name() not in ["Linux", "Windows"] or "--shot" in args or "--snapshot" in args:
 		return
-	_p = OS.execute_with_pipe("python3", [ProjectSettings.globalize_path("res://mpris.py")])
+	if OS.get_name() == "Windows":
+		_p = OS.execute_with_pipe("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", ProjectSettings.globalize_path("res://smtc.ps1")])
+	else:
+		_p = OS.execute_with_pipe("python3", [ProjectSettings.globalize_path("res://mpris.py")])
 	if _p.is_empty():
-		print("mpris: no python3, so no media keys")
+		print("mpris: no %s, so no media keys" % ("powershell" if OS.get_name() == "Windows" else "python3"))
 		return
 	_listen.start(_read)
 

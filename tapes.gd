@@ -797,9 +797,16 @@ func seek_to(to: float) -> void:  # wind it to there, where it sits in the machi
 	playing.tape.at = to
 
 
+var _pressed: Array = ["", 0]  # the last button, and when
+
+
 func transport(what: String, s := 0.0) -> void:  # the VCR's buttons, however they're pressed: its keys, the media keys, the desktop's player controls (mpris.gd). stop only pauses: the tape stays in
 	if playing == null:
 		return
+	var key: String = "play" if what in ["playpause", "play", "pause"] else what  # (one press of a media key can come twice, to the window and through Windows' controls: the second's dropped)
+	if what not in ["pos", "seek"] and key == _pressed[0] and Time.get_ticks_msec() - _pressed[1] < 250:
+		return
+	_pressed = [key, Time.get_ticks_msec()]
 	match what:
 		"playpause", "play", "pause", "stop":
 			if not video.url.is_empty():

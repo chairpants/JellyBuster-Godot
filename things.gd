@@ -165,7 +165,7 @@ func _ready() -> void:
 	if _cloth == null:
 		push_warning("the bedsheet isn't where the web game has it: the picture's on a flat stand-in")
 		_sheet_mat.set_shader_parameter("uFlip", 1.0)
-		add_child(_sheet)
+	add_child(_sheet)  # (in the tree either way, or it's never freed)
 
 
 func _v(a: Array) -> Vector3:
@@ -220,7 +220,7 @@ func _process(dt: float) -> void:
 	# the movie on the roof: in the sun it's barely there; after dark it's the picture
 	var k := (0.06 + 0.9 * pow(1.0 - sky.level, 1.5)) if cine_on else 0.0
 	_blue += ((0.0 if tapes.playing != null and video._shown > 0 else 1.0) - _blue) * minf(1.0, dt * 4.0)
-	_sheet.visible = k > 0.0
+	_sheet.visible = k > 0.0 and _cloth == null
 	if _cloth and _cloth.material_overlay != (_sheet_mat if k > 0.0 else null):  # (each only when it changes: a material touched, everything it's on is, and every light that sees them draws its shadows again)
 		_cloth.material_overlay = _sheet_mat if k > 0.0 else null
 	for p: Array in [["uProj", k], ["uBlue", _blue]]:

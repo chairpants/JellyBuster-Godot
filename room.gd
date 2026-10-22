@@ -62,6 +62,7 @@ uniform sampler2D tex : source_color, FILTER, repeat_enable;
 uniform bool use_tex = false;
 uniform vec3 tint = vec3(1.0);   // LOOK: the store's colours, put to rights (a wall's paint, the carpet worn grey)
 uniform float desat = 0.0;
+uniform bool carpet = false;     // LOOK's third: the carpet's pile, worn paths and confetti flecks (carpet() below)
 uniform bool use_vcol = false;
 uniform vec3 uv_scale = vec3(1.0);
 uniform vec3 uv_offset = vec3(0.0);
@@ -81,11 +82,38 @@ void vertex() {
 	UV = UV * uv_scale.xy + uv_offset.xy;
 }
 
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float vnoise(vec2 p) {
+	vec2 i = floor(p);
+	vec2 f = fract(p);
+	f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+vec3 carpet_look(vec3 c, vec2 q) {   // a commercial carpet of the time, by where on the floor: the pile's grain, a slow mottle, worn paler where feet go, and confetti flecks
+	float near = clamp(1.0 - 40.0 * length(fwidth(q)), 0.0, 1.0);   // (the fine stuff fades with distance, before it can shimmer)
+	float pile = mix(1.0, 0.9 + 0.2 * hash(floor(q * 180.0)), near);
+	float mottle = 0.92 + 0.16 * vnoise(q * 3.0);
+	float worn = smoothstep(0.55, 0.85, vnoise(q * 0.35 + 7.0));   // (patches, metres across)
+	c = mix(c, vec3(dot(c, vec3(0.3, 0.59, 0.11))) * 1.25, 0.35 * worn) * pile * mottle;
+	vec2 cell = floor(q * 14.0);
+	vec2 f = fract(q * 14.0) - 0.5;
+	float h = hash(cell + 3.1);
+	if (h < 0.12) {   // a fleck: a short dash, turned any way
+		float ang = hash(cell + 9.7) * 6.2832;
+		vec2 d = vec2(cos(ang) * f.x + sin(ang) * f.y, -sin(ang) * f.x + cos(ang) * f.y);
+		float on = (1.0 - smoothstep(0.2, 0.26, abs(d.x))) * (1.0 - smoothstep(0.06, 0.1, abs(d.y)));
+		vec3 fleck = h < 0.04 ? vec3(0.62, 0.22, 0.42) : h < 0.08 ? vec3(0.2, 0.55, 0.55) : vec3(0.78, 0.66, 0.3);
+		c = mix(c, fleck * mottle, on * 0.7 * mix(0.35, 1.0, near));
+	}
+	return c;
+}
+
 void fragment() {
 	vec4 a = albedo;
 	if (use_tex) a *= texture(tex, UV);
 	if (use_vcol) a.rgb *= COLOR.rgb;
 	a.rgb = mix(a.rgb, vec3(dot(a.rgb, vec3(0.3, 0.59, 0.11))), desat) * tint;
+	if (carpet) a.rgb = carpet_look(a.rgb, P.xz);
 	ALPHA_CODE
 	vec3 rN = normalize(wN) * (FRONT_FACING ? 1.0 : -1.0);
 	vec3 fl = mix(uInGround, uInSky, 0.5 * rN.y + 0.5) + uInAmb + uInDirC * max(dot(rN, uInDir), 0.0);   // one room's worth of fluorescents
@@ -113,7 +141,8 @@ void fragment() {
 	} else if (P.x > uLobbyBox.x && P.x < uLobbyBox.y && P.z >= uLobbyBox.z && P.z < uLobbyBox.w && (P.y < uBohSplit.y + 0.05 || P.z >= uBoothZ && P.y > uTall.x && P.y < uTall.y + 0.1)) {   // (and the projection booth over its back, and the stairs up to it: on a switch of their own, a cooler light)
 		bool stairs = P.x > uShaft.x && P.z > uShaft.y;
 		bool booth = stairs || P.y > uTall.x;
-		rl = booth ? (0.02 + 0.3 * (stairs ? uStairLight : uBoothLight)) * fl * vec3(1.12, 0.92, 0.7) : (0.04 + 0.96 * uThLight.x) * fl * vec3(1.08, 0.93, 0.80);   // (back here, no tubes: a dim warm room round its lamps' pools, lights.gd's)
+		float lv = stairs ? uStairLight : uBoothLight;
+		rl = booth ? ((0.03 + 0.5 * lv) * vec3(1.12, 0.92, 0.7) + (stairs ? vec3(0.0) : 0.06 * (1.0 - lv) * vec3(1.0, 0.12, 0.08))) * fl : (0.04 + 0.96 * uThLight.x) * fl * vec3(1.08, 0.93, 0.80);   // (back here, no tubes: a warm room round its lamps' pools, lights.gd's; the booth with its switch off, the red of its working lights)
 	} else if (P.x > uThBox.x && P.x < uThBox.y && P.z >= uThBox.z && P.z < uThBox.w && P.y < uTall.y + 0.1) {
 		rl = (0.025 + 0.55 * uThLight.y + 0.12 * uThSconce) * fl * vec3(1.15, 0.82, 0.55);   // house lights + a low warm sconce wash
 		rl += uVid.rgb * uVid.a * VID_THEATER;   // the picture, off the screen onto the walls, the ceiling, the seats
@@ -156,7 +185,7 @@ void light() {   // the real lights, on the surface's own colour (ALBEDO's alrea
 const FLOOR_SHINE := { "vaultbuster_73.jpg": 0.6, "vaultbuster_0.jpg": 0.5 }  # the level's hard floors, by their pictures
 # a real store's colours, by the level's pictures or plain colours: [tint, how much of the colour out first]. The web game's
 # primaries read as a toy: walls painted a warm yellow, the carpet a worn blue-grey, the uprights navy
-const LOOK := { "e8ecf2": [Color("#e9c25c"), 0.0], "vaultbuster_43.jpg": [Color(1.2, 1.35, 1.6), 0.7], "1c4dbb": [Color("#5d79ab"), 0.35] }
+const LOOK := { "e8ecf2": [Color("#e9c25c"), 0.0], "vaultbuster_43.jpg": [Color(1.2, 1.35, 1.6), 0.7, "carpet"],"1c4dbb": [Color("#5d79ab"), 0.35] }
 const GRADE := """
 shader_type canvas_item;
 render_mode blend_premul_alpha;
@@ -327,6 +356,7 @@ func _room_material(m: StandardMaterial3D, has_colors: bool) -> ShaderMaterial:
 	if look:
 		out.set_shader_parameter("tint", look[0])
 		out.set_shader_parameter("desat", look[1])
+		out.set_shader_parameter("carpet", look.size() > 2)
 	if m.albedo_texture != null:
 		out.set_shader_parameter("tex", m.albedo_texture)
 		out.set_shader_parameter("use_tex", true)
