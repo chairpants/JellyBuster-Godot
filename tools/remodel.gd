@@ -42,6 +42,10 @@ extends SceneTree
 ##   and the film's loop down through it, a lens turret; a motor under it, its console's switch panel and hour meter.
 ##   The lamp house a door, its handle and the sight glass showing the arc, a maker's plate. The platters lipped, the
 ##   brain's payout rollers. The sound rack's rails and screws, its units' VU meters and knobs
+## outside: the store's bare east side and the theater's back given what's on the back of a building: on the side, the
+##   electric meters and their disconnect with the conduit up to the roof, the gas meter on its riser, a hose bib, wall
+##   packs; the dumpster on a concrete pad behind two bollards. On the theater's back, its emergency exit (a steel door
+##   in its frame, no handle this side, a stoop under it, a lit EXIT over it, a wall pack), a louvre up high
 ## restroom: the floors either side of the wall between the restroom and the break room meeting under it, square (boh
 ##   moved that wall over, but only the floors' far corners with it: a wedge of the break room's floor in the restroom).
 ##
@@ -129,6 +133,12 @@ func _init() -> void:
 				quit(1)
 				return
 			_booth_v2()
+		"outside":
+			if not "theater" in done:
+				push_error("remodel: outside goes after theater")
+				quit(1)
+				return
+			_outside()
 		"railings":
 			if not "theater" in done:
 				push_error("remodel: railings go after theater")
@@ -161,7 +171,7 @@ func _init() -> void:
 	var err := packed.pack(w)
 	if err == OK:
 		err = ResourceSaver.save(packed, WORLD, ResourceSaver.FLAG_COMPRESS)  # (as it came: compressed)
-	if not section in ["strip", "restroom", "railings", "hall", "roof", "closet", "stairwell", "breakroom", "aisles", "lavatory", "booth"]:  # (the level only: the data's as it was)
+	if not section in ["strip", "restroom", "railings", "hall", "roof", "closet", "stairwell", "breakroom", "aisles", "lavatory", "booth", "outside"]:  # (the level only: the data's as it was)
 		var f := FileAccess.open(DATA, FileAccess.WRITE)
 		f.store_string(_json(data))
 		f.close()
@@ -618,6 +628,69 @@ func _booth_v2() -> void:  # (where _booth_kit put them)
 		var y: float = B + 0.2 + i * 0.26
 		for j in 3:
 			cylinder("lobby", "rack knob", Vector3(rx - 0.025, y + 0.08, 32.55 + j * 0.1), 0.016, 0.022, Vector3.RIGHT, dark)
+
+
+func _outside() -> void:
+	var xe := 11.25  # the store's east face; the theater's back face
+	var zr := 48.75
+	var grey := Color("8d9196")
+	var galv := Color("9da3a8")
+	var dark := Color("2b2d30")
+	var lens := Color("f1e3b5")
+	# the electric service: two meters on their sockets, the main disconnect, the conduit up the wall to the roof
+	for k in 2:
+		var z := 26.6 + k * 0.42
+		block("out", "meter socket", Vector3(xe, 1.3, z - 0.16), Vector3(xe + 0.12, 1.75, z + 0.16), grey)
+		cylinder("out", "meter glass", Vector3(xe + 0.17, 1.55, z), 0.085, 0.1, Vector3.RIGHT, Color("cfd6d8"))
+		cylinder("out", "meter face", Vector3(xe + 0.13, 1.55, z), 0.075, 0.02, Vector3.RIGHT, Color("f4f1e8"))
+	block("out", "main disconnect", Vector3(xe, 1.15, 27.55), Vector3(xe + 0.16, 1.85, 28.0), grey)
+	block("out", "disconnect handle", Vector3(xe + 0.16, 1.45, 27.95), Vector3(xe + 0.2, 1.65, 28.0), Color("c8102e"))
+	block("out", "service conduit", Vector3(xe + 0.02, 1.85, 27.73), Vector3(xe + 0.08, 4.9, 27.79), galv)
+	for y: float in [2.6, 3.6, 4.5]:
+		block("out", "conduit strap", Vector3(xe, y, 27.7), Vector3(xe + 0.09, y + 0.03, 27.82), galv)
+	# the gas meter on its riser, its regulator; a hose bib
+	var gz := 30.0
+	bar("out", "gas riser", Vector3(xe + 0.12, 0.0, gz), Vector3(xe + 0.12, 0.62, gz), Vector2(0.05, 0.05), Color("d7b23a"))
+	block("out", "gas meter", Vector3(xe + 0.04, 0.62, gz - 0.15), Vector3(xe + 0.3, 0.98, gz + 0.15), grey)
+	block("out", "gas meter dial", Vector3(xe + 0.3, 0.8, gz - 0.06), Vector3(xe + 0.305, 0.9, gz + 0.06), Color("f4f1e8"))
+	cylinder("out", "gas regulator", Vector3(xe + 0.18, 0.5, gz + 0.22), 0.07, 0.08, Vector3.UP, Color("5b5f64"))
+	bar("out", "gas pipe", Vector3(xe + 0.12, 0.98, gz), Vector3(xe + 0.05, 1.08, gz), Vector2(0.04, 0.04), Color("d7b23a"))
+	block("out", "hose bib", Vector3(xe, 0.45, 23.0), Vector3(xe + 0.08, 0.5, 23.05), Color("b08d57"))
+	cylinder("out", "hose bib handle", Vector3(xe + 0.1, 0.52, 23.025), 0.03, 0.01, Vector3.UP, Color("c8102e"))
+	# wall packs along the side
+	for z: float in [17.5, 33.0]:
+		block("out", "wall pack", Vector3(xe, 3.3, z - 0.16), Vector3(xe + 0.2, 3.52, z + 0.16), Color("5a4b3a"))
+		block("out", "wall pack lens", Vector3(xe + 0.02, 3.29, z - 0.14), Vector3(xe + 0.19, 3.3, z + 0.14), lens)
+	# the dumpster's pad and its bollards
+	block("out", "dumpster pad", Vector3(13.5, 0.0, 30.2), Vector3(15.5, 0.05, 33.0), Color("9a9a96"))
+	for z: float in [30.45, 32.75]:
+		cylinder("out", "bollard", Vector3(15.85, 0.5, z), 0.08, 1.0, Vector3.UP, Color("f2c200"))
+		cylinder("out", "bollard cap", Vector3(15.85, 1.0, z), 0.08, 0.04, Vector3.UP, Color("e0b000"))
+	# the theater's emergency exit: its door and frame, a stoop, EXIT lit over it, a wall pack; a louvre high up
+	var dx := -0.4
+	block("out", "exit stoop", Vector3(dx - 0.8, 0.0, zr), Vector3(dx + 0.8, 0.15, zr + 1.0), Color("9a9a96"))
+	block("out", "exit frame", Vector3(dx - 0.53, 0.15, zr), Vector3(dx + 0.53, 2.3, zr + 0.04), Color("4a4f57"))
+	block("out", "exit door", Vector3(dx - 0.47, 0.15, zr + 0.04), Vector3(dx + 0.47, 2.25, zr + 0.06), Color("6b7078"))
+	for y: float in [0.5, 1.2, 1.9]:
+		block("out", "exit hinge", Vector3(dx + 0.47, y, zr + 0.04), Vector3(dx + 0.5, y + 0.1, zr + 0.065), galv)
+	block("out", "exit sign", Vector3(dx - 0.18, 2.42, zr), Vector3(dx + 0.18, 2.6, zr + 0.06), Color("f2f2ee"))
+	var face := QuadMesh.new()
+	face.size = Vector2(0.32, 0.15)
+	var tex := ImageTexture.create_from_image(_lettering("EXIT", Color("d0101a"), Color("f6f6f2")))
+	var lit := StandardMaterial3D.new()
+	lit.albedo_texture = tex
+	lit.emission_enabled = true
+	lit.emission_texture = tex
+	lit.emission = Color(1.0, 0.25, 0.2)
+	lit.emission_energy_multiplier = 0.6
+	face.material = lit
+	var fm := _add("out", "exit sign face", face)
+	fm.global_position = Vector3(dx, 2.51, zr + 0.0605)
+	block("out", "exit wall pack", Vector3(dx - 0.16, 2.85, zr), Vector3(dx + 0.16, 3.07, zr + 0.2), Color("5a4b3a"))
+	block("out", "exit wall pack lens", Vector3(dx - 0.14, 2.84, zr + 0.02), Vector3(dx + 0.14, 2.85, zr + 0.19), lens)
+	block("out", "theater louvre", Vector3(-5.6, 4.6, zr), Vector3(-4.6, 5.3, zr + 0.06), Color("b8bcc2"))
+	for k in 7:
+		block("out", "louvre blade", Vector3(-5.56, 4.66 + k * 0.09, zr + 0.06), Vector3(-4.64, 4.69 + k * 0.09, zr + 0.09), dark)
 
 
 const HALL := { "x": [2.0, 9.4], "z": [28.1, 29.7], "base": Color("2e2f31"), "door": Color("d4d6d8"), "trim": Color("bfc3c7"), "steel": Color("b8bcc0"), "cork": Color("b0875a"), "red": Color("c8102e") }

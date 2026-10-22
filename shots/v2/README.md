@@ -104,3 +104,19 @@ brain's payout rollers. The sound rack's rails and screws, VU meters and knobs o
 | ![](booth/rack_before.png) | ![](booth/rack_after.png) |
 | ![](booth/in_before.png) | ![](booth/in_after.png) |
 | ![](booth/west_before.png) | ![](booth/west_after.png) |
+
+## Outside (`outside`)
+
+The storefront was already done; the store's long east side and the theater's back were bare. On the side: the electric
+meters and their disconnect with the conduit up to the roof, the gas meter on its riser, a hose bib, wall packs; the
+dumpster on a concrete pad behind two bollards. On the theater's back: its emergency exit (a steel door in its frame, a
+stoop, a lit EXIT over it, a wall pack), and a louvre up high.
+
+| Before | After |
+|---|---|
+| ![](outside/east_before.png) | ![](outside/east_after.png) |
+| ![](outside/meters_before.png) | ![](outside/meters_after.png) |
+| ![](outside/rear_before.png) | ![](outside/rear_after.png) |
+| ![](outside/exit_before.png) | ![](outside/exit_after.png) |
+| ![](outside/front_before.png) | ![](outside/front_after.png) |
+| ![](outside/night_before.png) | ![](outside/night_after.png) |
