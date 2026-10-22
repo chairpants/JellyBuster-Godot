@@ -7,7 +7,14 @@ The store is VaultBuster's (the web game), its shelves laid out the way VaultBus
 the outer walls, kids' titles in the front corner by the windows, older movies and TV on the low shelving in the
 middle, a section at a time, A to Z. A bigger library makes a deeper store; a smaller one still gets VaultBuster's
 whole store, the spare shelf space stocked with extra copies beside the originals (the newest releases most), the way a
-rental store has a few of the hits.
+rental store has a few of the hits. By the counter, a display picks some out: what you're part way through and what's
+just come in on one side; what's like the last film you finished, and a shelf of films in brown paper (a blind date:
+you find out what it is when it's in the VCR) on the other.
+
+In the theater a film from the top gets the works: the house lights go down, the curtains part, a card asks you to
+silence your pager, the server's trailers if it has any (its Cinema Mode, or a few films' own), OUR FEATURE
+PRESENTATION, then the film; E at the screen skips to it. Every screen looks like what it is: a tape on a TV, film in
+the theater.
 
 ## Running it
 
@@ -41,7 +48,7 @@ the doors, what you're carrying) and puts it back next time; the settings' NEW S
 | Wheel, sat down | Zoom; all the way in on a screen that's playing, one more notch: the picture full screen (back out: the room) |
 | F | Sat down with a tape on: full screen and back; stood up: fly. Held: the time and weather wheel (pick with the mouse) |
 | L / M / J / H | Skip an hour / mute / fold the log / hide everything written on screen |
-| P (or right-click sat down) | Settings: the picture, the volume, GRAPHICS (lighting effects, smooth edges, render scale, full screen), CONTROLS (field of view, mouse speed, invert Y), NEW SHIFT |
+| P (or right-click sat down) | Settings: the picture, the volume, SCREEN LOOKS (a tape on a TV, film in the theater), GRAPHICS (lighting effects, smooth edges, render scale, full screen), THEATER (the PRE-SHOW), CONTROLS (field of view, mouse speed, invert Y), NEW SHIFT |
 | F1 / F2 / F11 | The keys / the server settings / full screen |
 | Esc | Free the mouse |
 
@@ -60,6 +67,8 @@ movie's a new release, out on the walls. Edit it to taste.
 | `store.gd` | The shelves: the layout (walls, kids, centre), the gondolas, the signs; how deep the store has to be |
 | `level.gd` | The level made that deep (autoload `Level`): what's past the lounge slides back, what crosses stretches |
 | `tapes.gd` | Tapes on and off the shelves, in hand, into the theater's projector |
+| `cinema.gd` | The theater's curtains and its pre-show |
+| `decor.gd` | The balloons by the counter; October's and December's decorations (in the editor too) |
 | `backbox.gd` | The back of a tape's box: Jellyfin's details laid out like a rental's, drawn once into a texture |
 | `video.gd` | Plays a Jellyfin item through ffmpeg onto the screens, its sound one gapless stream |
 | `pos.gd` | The register's terminal (VaultBuster's POS/NET) |
@@ -70,7 +79,7 @@ movie's a new release, out on the walls. Edit it to taste.
 | the rest | The player, doors, lights, the sky and weather, sound: VaultBuster's |
 
 `godot --headless --path . --script tools/jellyfin_check.gd` checks the sections, the layout and the subtitle reader without a server.
-`godot --path . -- --demo --shot --at=x,y,z,yaw,pitch` saves `shot.png` from there (`--hour=h`, `--weather=rain|snow|fog`, `--lights` for every room's lights on, `--walk=s` to walk forward that long first and print where it got to, `--film` for the projector running without a server, `--season=halloween|none` for the decorations, which otherwise go by the date: `decor.gd`).
+`godot --path . -- --demo --shot --at=x,y,z,yaw,pitch` saves `shot.png` from there (`--hour=h`, `--weather=rain|snow|fog`, `--lights` for every room's lights on, `--walk=s` to walk forward that long first and print where it got to, `--film` for a test card on every screen and the projectors running, without a server, `--season=halloween|christmas|none` for the decorations, which otherwise go by the date: `decor.gd`). Without `--shot` the same set it up and play on from there, neither taking the saved state nor leaving their own; `--perf=s` runs that many seconds unthrottled and prints frames a second and what each frame drew.
 `godot --path . --resolution 1400x1400 -s tools/plan.gd -- [--area=x0,z0,x1,z1] [--cut=y] [--out]` saves `plan.png`, the level from straight above with its roof off; `tools/inventory.gd` lists what's where in it.
 `tools/shots.sh <name>` takes the same seven views every time into `shots/<name>/`, to compare before and after a change.
 `godot --path . -- --demo --snapshot [--hour=h]` saves the store as the game built it to `baked/snapshot.scn`: open it in
