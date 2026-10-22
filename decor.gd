@@ -2,7 +2,6 @@ extends Node3D
 ## What a store puts up that isn't stock: a bunch of balloons at the counter's end, all year; and through October,
 ## Halloween: jack-o'-lanterns on the counter (a candle in each, guttering), orange and black bunting along the windows,
 ## cobwebs up in the sales floor's corners. By the computer's date (--season=halloween, or =none, to see it otherwise).
-## And in the theater, a black iron railing along the step behind each pair of wheelchair spaces, for the row behind.
 ## All lit by the room's light like the rest (room.gd), but the pumpkins' insides, which glow through their cut faces.
 
 const COUNTER_Y := 1.1  # the returns counter's top, if nothing's found there (_on_top)
@@ -20,7 +19,6 @@ const FACE := [  # a jack-o'-lantern's cuts: eyes, nose, a jagged grin (in units
 	[Vector2(-0.25, -0.15), Vector2(0.25, -0.38), Vector2(0.25, -0.15)], [Vector2(0.25, -0.15), Vector2(0.25, -0.38), Vector2(0.5, -0.15)],
 	[Vector2(-0.12, -0.15), Vector2(0.0, -0.15), Vector2(-0.06, -0.06)]]
 const RIND := 0.87  # the inside of the shell, toward its middle: the cuts' walls this deep (~1.5 cm on the big one)
-const RAILING := { "x": [[-6.0, -4.15], [-0.35, 1.85]], "z": [42.6, 43.3], "top": 0.8, "mid": 0.4, "posts": 1.0, "color": "#151617" }  # the wheelchair spaces' ends (tools/remodel.gd's front row), where along z to look for the step down to them; the rails' heights over the step, posts no further apart than that
 
 var _bob: Array = []  # [the balloon, how far its middle is from the tie, its phase, its string, where its middle is, how fast it's going, where it was]
 var _shiny: Array[MeshInstance3D] = []  # the balloons' skins
@@ -42,8 +40,6 @@ func _ready() -> void:
 	await get_tree().physics_frame
 	var fall := season() == "halloween"
 	_balloons(BALLOONS.fall if fall else BALLOONS.colors)
-	for xs: Array in RAILING.x:
-		_railing(xs[0], xs[1])
 	if fall:
 		for p: Array in PUMPKINS:
 			_pumpkin(_rest(p[0], p[1], p[2] * 0.6), p[2])
@@ -366,46 +362,6 @@ func _face_texture(rim := false) -> ImageTexture:  # the cuts, as seen from the 
 	img.generate_mipmaps()
 	_faces[key] = ImageTexture.create_from_image(img)
 	return _faces[key]
-
-
-func _railing(x0: float, x1: float) -> void:  # along the edge of the row behind's step, standing on it: posts, a mid rail, a round top rail; solid
-	var space := get_world_3d().direct_space_state
-	var top := INF  # the step's height, then where it drops off (felt for from above, between that row's seats and the spaces)
-	var edge := 42.88
-	var z: float = RAILING.z[0]
-	while z < RAILING.z[1]:
-		var hit := space.intersect_ray(PhysicsRayQueryParameters3D.create(Vector3((x0 + x1) / 2.0, -0.9, z), Vector3((x0 + x1) / 2.0, -3.0, z)))
-		if hit:
-			if top == INF:
-				top = hit.position.y
-			elif hit.position.y < top - 0.1:
-				edge = z - 0.01
-				break
-		z += 0.01
-	if top == INF:
-		return
-	var at := edge - 0.05
-	var iron := _mat(Color(RAILING.color))
-	var n := ceili((x1 - x0) / RAILING.posts)
-	for i in n + 1:
-		var x := lerpf(x0, x1, float(i) / n)
-		_put(_box(Vector3(0.04, RAILING.top, 0.04)), iron, Transform3D(Basis.IDENTITY, Vector3(x, top + RAILING.top / 2.0, at)))
-		_put(_box(Vector3(0.1, 0.008, 0.1)), iron, Transform3D(Basis.IDENTITY, Vector3(x, top + 0.004, at)))  # (its foot, bolted down)
-	_put(_box(Vector3(x1 - x0, 0.025, 0.025)), iron, Transform3D(Basis.IDENTITY, Vector3((x0 + x1) / 2.0, top + RAILING.mid, at)))
-	var rail := CylinderMesh.new()
-	rail.top_radius = 0.022
-	rail.bottom_radius = 0.022
-	rail.height = x1 - x0 + 0.04
-	rail.radial_segments = 12
-	_put(rail, iron, Transform3D(Basis(Vector3.BACK, PI / 2.0), Vector3((x0 + x1) / 2.0, top + RAILING.top, at)))
-	var body := StaticBody3D.new()
-	var shape := CollisionShape3D.new()
-	var box := BoxShape3D.new()
-	box.size = Vector3(x1 - x0 + 0.05, 1.0, 0.08)
-	shape.shape = box
-	body.add_child(shape)
-	body.position = Vector3((x0 + x1) / 2.0, top + 0.5, at)
-	add_child(body)
 
 
 func _bunting() -> void:  # pennants on a sagging string along the storefront, inside the glass

@@ -17,6 +17,8 @@ extends SceneTree
 ##   from the store's roof; the back ladder moved off its side to the back of the back of house.
 ## strip: VaultBuster's shelf layout out of the level for good, as level.gd's strip() takes it out every time the game
 ##   starts (store.gd lays out its own): in the editor, its wall runs no longer stand across the hall's moved doorway.
+## railings: a black iron railing on the step behind each pair of the front row's wheelchair spaces, for the row behind
+##   (posts, a mid rail, a round top rail; solid as everything is, main.gd)
 ## restroom: the floors either side of the wall between the restroom and the break room meeting under it, square (boh
 ##   moved that wall over, but only the floors' far corners with it: a wedge of the break room's floor in the restroom).
 ##
@@ -60,6 +62,12 @@ func _init() -> void:
 				quit(1)
 				return
 			_theater()
+		"railings":
+			if not "theater" in done:
+				push_error("remodel: railings go after theater")
+				quit(1)
+				return
+			_railings()
 		"restroom":
 			if not "boh" in done:
 				push_error("remodel: restroom goes after boh")
@@ -81,7 +89,7 @@ func _init() -> void:
 	var err := packed.pack(w)
 	if err == OK:
 		err = ResourceSaver.save(packed, WORLD, ResourceSaver.FLAG_COMPRESS)  # (as it came: compressed)
-	if not section in ["strip", "restroom"]:  # (the level only: the data's as it was)
+	if not section in ["strip", "restroom", "railings"]:  # (the level only: the data's as it was)
 		var f := FileAccess.open(DATA, FileAccess.WRITE)
 		f.store_string(_json(data))
 		f.close()
@@ -91,6 +99,20 @@ func _init() -> void:
 
 
 # ---- the sections
+
+func _railings() -> void:  # along the front of the step the row behind sits on (its top, and its edge: felt for along it, before)
+	const TOP := -1.3
+	const AT := 43.08
+	const BLACK := Color("151617")
+	for xs: Array in [[-6.0, -4.15], [-0.35, 1.85]]:  # (the wheelchair spaces' ends: _theater's)
+		var n := ceili((xs[1] - xs[0]) / 1.0)
+		for i in n + 1:
+			var x: float = lerpf(xs[0], xs[1], float(i) / n)
+			block("theater", "railing post", Vector3(x - 0.02, TOP, AT - 0.02), Vector3(x + 0.02, TOP + 0.8, AT + 0.02), BLACK)
+			block("theater", "railing foot", Vector3(x - 0.05, TOP, AT - 0.05), Vector3(x + 0.05, TOP + 0.008, AT + 0.05), BLACK)
+		block("theater", "railing mid rail", Vector3(xs[0], TOP + 0.3875, AT - 0.0125), Vector3(xs[1], TOP + 0.4125, AT + 0.0125), BLACK)
+		cylinder("theater", "railing top rail", Vector3((xs[0] + xs[1]) / 2.0, TOP + 0.8, AT), 0.022, xs[1] - xs[0] + 0.04, Vector3.RIGHT, BLACK)
+
 
 func _restroom() -> void:  # each floor's corner by the hall, still where the wall was, over to where it is (its texture carried on)
 	var wall := _bounds(_node("boh/box 0_20 x 2_70 x 3_20"))
