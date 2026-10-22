@@ -20,6 +20,9 @@ extends SceneTree
 ##   starts (store.gd lays out its own): in the editor, its wall runs no longer stand across the hall's moved doorway.
 ## railings: a black iron railing on the step behind each pair of the front row's wheelchair spaces, for the row behind
 ##   (posts, a mid rail, a round top rail; solid as everything is, main.gd)
+## hall: the back hall less bare. A rubber base along its walls; the break room's and the restroom's doors panelled, kick
+##   plates both sides, hinges; the ceiling lights framed; an extinguisher on its bracket and its sign; a lit EXIT over the
+##   way back to the store; the staff's corkboard between the doors, notices pinned to it
 ## restroom: the floors either side of the wall between the restroom and the break room meeting under it, square (boh
 ##   moved that wall over, but only the floors' far corners with it: a wedge of the break room's floor in the restroom).
 ##
@@ -63,6 +66,12 @@ func _init() -> void:
 				quit(1)
 				return
 			_theater()
+		"hall":
+			if not "boh" in done:
+				push_error("remodel: hall goes after boh")
+				quit(1)
+				return
+			_hall()
 		"railings":
 			if not "theater" in done:
 				push_error("remodel: railings go after theater")
@@ -95,7 +104,7 @@ func _init() -> void:
 	var err := packed.pack(w)
 	if err == OK:
 		err = ResourceSaver.save(packed, WORLD, ResourceSaver.FLAG_COMPRESS)  # (as it came: compressed)
-	if not section in ["strip", "restroom", "railings"]:  # (the level only: the data's as it was)
+	if not section in ["strip", "restroom", "railings", "hall"]:  # (the level only: the data's as it was)
 		var f := FileAccess.open(DATA, FileAccess.WRITE)
 		f.store_string(_json(data))
 		f.close()
@@ -105,6 +114,90 @@ func _init() -> void:
 
 
 # ---- the sections
+
+const HALL := { "x": [2.0, 9.4], "z": [28.1, 29.7], "base": Color("2e2f31"), "door": Color("d4d6d8"), "trim": Color("bfc3c7"), "steel": Color("b8bcc0"), "cork": Color("b0875a"), "red": Color("c8102e") }
+
+
+func _hall() -> void:
+	var z0: float = HALL.z[0]  # (the south wall's face, the store side; the north wall's, the rooms')
+	var z1: float = HALL.z[1]
+	# the base: dark rubber, 10 cm, along each wall but its doorways
+	for r: Array in [[2.0, 3.64, z0, 1], [5.56, 9.3, z0, 1], [2.0, 4.39, z1, -1], [5.61, 7.94, z1, -1], [9.16, 9.3, z1, -1]]:
+		block("boh", "hall base", Vector3(r[0], 0.0, minf(r[2], r[2] + r[3] * 0.012)), Vector3(r[1], 0.1, maxf(r[2], r[2] + r[3] * 0.012)), HALL.base)
+	for r: Array in [[2.03, 28.0, 28.44, 1], [2.03, 29.37, 29.8, 1], [9.3, 28.1, 28.44, -1], [9.3, 29.36, 29.7, -1]]:
+		block("boh", "hall base", Vector3(minf(r[0], r[0] + r[3] * 0.012), 0.0, r[1]), Vector3(maxf(r[0], r[0] + r[3] * 0.012), 0.1, r[2]), HALL.base)
+	# the two doors off it: moulded panels each face, a kick plate each side, three hinges (on the door, so they swing with it)
+	for d: Array in [["boh/group of 66", 5.0, 1.0], ["boh/group of 69", 8.55, 1.0]]:  # [the door's group, its middle, which way its hinges are]
+		var x: float = d[1]
+		for face in [-1, 1]:
+			var zf: float = 29.8 + face * 0.02
+			var out := Vector3(0, 0, face * 0.008)
+			for pnl: Array in [[0.36, 0.95], [1.14, 1.92]]:  # (each panel: a moulding round it)
+				for e: Array in [[x - 0.4, pnl[0], x + 0.4, pnl[0] + 0.025], [x - 0.4, pnl[1] - 0.025, x + 0.4, pnl[1]], [x - 0.4, pnl[0], x - 0.375, pnl[1]], [x + 0.375, pnl[0], x + 0.4, pnl[1]]]:
+					var a := Vector3(e[0], e[1], zf)
+					var b := Vector3(e[2], e[3], zf) + out
+					block(d[0], "door moulding", a.min(b), a.max(b), HALL.trim)
+			var ka := Vector3(x - 0.5, 0.02, zf)
+			var kb := Vector3(x + 0.5, 0.27, zf + face * 0.002)
+			block(d[0], "kick plate", ka.min(kb), ka.max(kb), HALL.steel)
+		for y in [0.25, 1.05, 1.85]:
+			cylinder(d[0], "hinge", Vector3(x + d[2] * 0.535, y, 29.8 - 0.024), 0.011, 0.1, Vector3.UP, HALL.steel)
+	# the ceiling lights: an aluminium frame round each
+	for c: float in [4.5, 8.1]:
+		for e: Array in [[c - 0.92, 28.44, c + 0.92, 28.47], [c - 0.92, 29.33, c + 0.92, 29.36], [c - 0.92, 28.44, c - 0.89, 29.36], [c + 0.89, 28.44, c + 0.92, 29.36]]:
+			block("boh", "light frame", Vector3(e[0], 2.66, e[1]), Vector3(e[2], 2.7, e[3]), Color("dfe1e3"))
+	# an extinguisher on its bracket, by the closet; its sign over it
+	var ex := Vector3(8.75, 0.0, z0 + 0.09)
+	block("boh", "extinguisher bracket", Vector3(ex.x - 0.04, 0.95, z0), Vector3(ex.x + 0.04, 1.3, z0 + 0.012), C.iron)
+	cylinder("boh", "extinguisher", Vector3(ex.x, 1.12, ex.z), 0.075, 0.42, Vector3.UP, HALL.red)
+	cylinder("boh", "extinguisher neck", Vector3(ex.x, 1.36, ex.z), 0.028, 0.06, Vector3.UP, Color("1d1f22"))
+	block("boh", "extinguisher handle", Vector3(ex.x - 0.07, 1.39, ex.z - 0.012), Vector3(ex.x + 0.05, 1.405, ex.z + 0.012), C.iron)
+	bar("boh", "extinguisher hose", Vector3(ex.x + 0.03, 1.37, ex.z + 0.02), Vector3(ex.x + 0.085, 0.98, ex.z + 0.03), Vector2(0.018, 0.018), Color("1d1f22"))
+	block("boh", "extinguisher sign", Vector3(ex.x - 0.1, 1.55, z0), Vector3(ex.x + 0.1, 1.8, z0 + 0.006), HALL.red)
+	block("boh", "extinguisher sign arrow", Vector3(ex.x - 0.03, 1.58, z0 + 0.006), Vector3(ex.x + 0.03, 1.66, z0 + 0.008), Color.WHITE)
+	# EXIT, lit, over the way back to the store
+	block("boh", "exit sign", Vector3(4.44, 2.34, z0), Vector3(4.76, 2.5, z0 + 0.05), Color("f2f2ee"))
+	var face := QuadMesh.new()
+	face.size = Vector2(0.3, 0.14)
+	var tex := ImageTexture.create_from_image(_lettering("EXIT", Color("d0101a"), Color("f6f6f2")))
+	var lit := StandardMaterial3D.new()
+	lit.albedo_texture = tex
+	lit.emission_enabled = true
+	lit.emission_texture = tex
+	lit.emission = Color(1.0, 0.25, 0.2)
+	lit.emission_energy_multiplier = 0.6
+	face.material = lit
+	var fm := _add("boh", "exit sign face", face)
+	fm.global_position = Vector3(4.6, 2.42, z0 + 0.0505)
+	# the staff's corkboard between the doors: a wooden frame, notices pinned up
+	var cb := [6.05, 7.45, 1.0, 1.72]
+	block("boh", "corkboard", Vector3(cb[0], cb[2], z1 - 0.02), Vector3(cb[1], cb[3], z1), HALL.cork)
+	for e: Array in [[cb[0] - 0.03, cb[2] - 0.03, cb[1] + 0.03, cb[2]], [cb[0] - 0.03, cb[3], cb[1] + 0.03, cb[3] + 0.03], [cb[0] - 0.03, cb[2], cb[0], cb[3]], [cb[1], cb[2], cb[1] + 0.03, cb[3]]]:
+		block("boh", "corkboard frame", Vector3(e[0], e[1], z1 - 0.03), Vector3(e[2], e[3], z1), C.wood)
+	var notes := [[6.15, 1.38, 0.21, 0.28, Color("f4f1e8")], [6.45, 1.12, 0.21, 0.28, Color("fdf3a7")], [6.75, 1.4, 0.18, 0.22, Color("f7c9d4")], [7.0, 1.08, 0.3, 0.2, Color("f4f1e8")], [7.05, 1.38, 0.24, 0.3, Color("cfe6f7")]]
+	for n: Array in notes:  # [left, bottom, wide, tall, colour]
+		block("boh", "notice", Vector3(n[0], n[1], z1 - 0.023), Vector3(n[0] + n[2], n[1] + n[3], z1 - 0.02), n[4])
+		cylinder("boh", "pin", Vector3(n[0] + n[2] / 2.0, n[1] + n[3] - 0.03, z1 - 0.027), 0.007, 0.012, Vector3.BACK, Color("d7262e"))
+		for k in 3:  # (a few lines of writing on it)
+			block("boh", "notice writing", Vector3(n[0] + 0.03, n[1] + n[3] - 0.08 - k * 0.04, z1 - 0.0235), Vector3(n[0] + n[2] - 0.04 - k * 0.02, n[1] + n[3] - 0.07 - k * 0.04, z1 - 0.0234), Color("4a4e57"))
+
+
+static func _lettering(text: String, ink: Color, paper: Color) -> Image:  # capitals, five by seven, drawn big on a sign's face (for what's lit: the room's light won't be on them)
+	const GLYPHS := { "E": ["11111", "10000", "10000", "11110", "10000", "10000", "11111"], "X": ["10001", "10001", "01010", "00100", "01010", "10001", "10001"],
+		"I": ["11111", "00100", "00100", "00100", "00100", "00100", "11111"], "T": ["11111", "00100", "00100", "00100", "00100", "00100", "00100"] }
+	const PX := 8
+	var w := text.length() * 6 * PX + 2 * PX
+	var img := Image.create(w, 11 * PX, false, Image.FORMAT_RGB8)
+	img.fill(paper)
+	for i in text.length():
+		var g: Array = GLYPHS.get(text[i], [])
+		for row in g.size():
+			for col in 5:
+				if g[row][col] == "1":
+					img.fill_rect(Rect2i(PX + i * 6 * PX + col * PX, 2 * PX + row * PX, PX, PX), ink)
+	img.generate_mipmaps()
+	return img
+
 
 func _railings() -> void:  # along the front of the step the row behind sits on (its top, and its edge: felt for along it, before)
 	const TOP := -1.3
