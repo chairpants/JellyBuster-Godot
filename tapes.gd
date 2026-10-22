@@ -49,7 +49,7 @@ static func _shader() -> String:  # the room's own light (room.gd), on a cover f
 
 
 var HAND := Transform3D(Basis.from_euler(Vector3(0.05, -0.4, 0.06)), Vector3(0.3, -0.28, -0.55))  # carried
-const THEATER_GROW := 6.2 / 5.7  # the theater's picture, past its 5.7 m screen to 6.2: its edges tuck in behind the proscenium's pillars, header and stage (the opening's 6.16 x 3.94)
+const THEATER_GROW := 6.2 / 5.7  # the theater's picture, past its screen by this much: its edges tuck in behind the proscenium's pillars, header and stage (the screen's 6.84 m, the opening 7.40 x 4.79: tools/remodel.gd)
 var LOOK := Transform3D(Basis.IDENTITY, Vector3(0, 0, -0.22))  # held up, cover to you: about 60% of the screen's height (fov 70)
 var LOOK_BACK := Transform3D(Basis(Vector3.UP, PI), Vector3(0, 0, -0.165))  # turned over, closer: the small print, the box about 85% of the screen's height
 
@@ -797,23 +797,48 @@ func seek_to(to: float) -> void:  # wind it to there, where it sits in the machi
 	playing.tape.at = to
 
 
+func transport(what: String, s := 0.0) -> void:  # the VCR's buttons, however they're pressed: its keys, the media keys, the desktop's player controls (mpris.gd). stop only pauses: the tape stays in
+	if playing == null:
+		return
+	match what:
+		"playpause", "play", "pause", "stop":
+			if not video.url.is_empty():
+				video.pause(not video.paused if what == "playpause" else what != "play")
+		"prev":
+			if playing.idx > 0:
+				playing.tape.at = 0.0
+				play_episode(playing.idx - 1)
+		"next":
+			step_episode(1)
+		"seek":
+			seek_to(video.position + s)
+		"pos":
+			seek_to(s)
+
+
 func _clock(t: float) -> String:
 	var s := int(t)
 	return "%d:%02d:%02d" % [s / 3600, s / 60 % 60, s % 60] if s >= 3600 else "%d:%02d" % [s / 60, s % 60]
 
 
 func _unhandled_input(e: InputEvent) -> void:
-	if e is InputEventKey and e.pressed and not e.echo and playing != null:  # the VCR's transport: [ and ] the one before and the next on the tape, / pause (, and . rewind and fast-forward, held: _scrub_tick)
+	if e is InputEventKey and e.pressed and not e.echo and playing != null:  # the VCR's transport: [ and ] the one before and the next on the tape, / pause (, and . rewind and fast-forward, held: _scrub_tick); the keyboard's media keys, when the desktop lets them through (mostly it hands them to mpris.gd instead)
+		match e.keycode:
+			KEY_MEDIAPLAY:
+				transport("playpause")
+			KEY_MEDIASTOP:
+				transport("stop")
+			KEY_MEDIAPREVIOUS:
+				transport("prev")
+			KEY_MEDIANEXT:
+				transport("next")
 		match e.physical_keycode:
 			KEY_SLASH:
-				if not video.url.is_empty():
-					video.pause()
+				transport("playpause")
 			KEY_BRACKETLEFT:
-				if playing.idx > 0:
-					playing.tape.at = 0.0
-					play_episode(playing.idx - 1)
+				transport("prev")
 			KEY_BRACKETRIGHT:
-				step_episode(1)
+				transport("next")
 			KEY_T:
 				_subs_next()
 			KEY_Y:

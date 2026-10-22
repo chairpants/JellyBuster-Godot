@@ -31,6 +31,7 @@ var _panels := {}  # zone -> [the material of each ceiling panel in it]
 var _boxes := {}
 var plates := {}  # zone -> the zones that share its switch plate
 var closet := {}  # the bare bulb's pull, and the bulb
+var _glowing: Array = []  # [its material, its colour lit, its zone, lit while that's off?]: the booth's lamps and red working lights, the stairwell's bulbs
 var _bulb: StandardMaterial3D
 var _night: Array[Dictionary] = []  # the lot's lamps and the street's: { light, on, delay, sodium }
 var _night_t := -1.0  # seconds since dusk while the lot's lamps warm up (-1: it's day)
@@ -52,13 +53,13 @@ const FLASH := 12.0  # and with lightning outside
 var flash := 0.0
 const SCREEN_GAIN := 7.0  # the TV's light, for a full-white frame
 const THEATER_GLOW := { "gain": 9.0, "out": 2.0 }  # the theater screen's light on the house: not by its size (that blew the stage and curtains out, and the bloom off them washed the picture), and from a little way out, clear of what's round it
-const PORT := [-1.42, 2.25, 33.17]  # the projection booth's port, over the back of the auditorium (the level's lens)
+const PORT := [-1.42, 4.2, 35.17]  # the projection booth's port, high in the auditorium's back wall (the level's lens)
 const BEAM := { "angle": 15.0, "energy": 0.4, "fog": 3.0, "follow": 1.2, "clear": 2.5 }  # wide enough for the screen's corners; barely lights what it lands on, but shows in the haze; follow: how fast its colour chases the picture's (slow: an average); clear: the haze-free stretch before the screen
 const PANEL_ON := Color(1.31, 1.33, 1.35)  # 0xf8fbff, and brighter than white: a lit panel blooms (room.gd)
 const SPILL := 0.55  # light through a doorway, for a fully lit room next to a dark one
 const SPILL_OUT := { "energy": 1.6, "range": 9.0 }  # the lit store's light out onto the sidewalk and the lot, at full dark
-const ZONE_K := { "closet": 0.8, "theater": 0.55 }  # how bright a room is with its light on, next to the rest (room.gd's shader)
-const ZONE_TINT := { "closet": Color(1.0, 0.85, 0.66), "lobby": Color(1.0, 0.86, 0.74), "theater": Color(1.0, 0.71, 0.48) }
+const ZONE_K := { "closet": 0.8, "theater": 0.55, "booth": 0.4, "stairwell": 0.4 }  # how bright a room is with its light on, next to the rest (room.gd's shader)
+const ZONE_TINT := { "closet": Color(1.0, 0.85, 0.66), "booth": Color(1.0, 0.8, 0.58), "stairwell": Color(1.0, 0.8, 0.58), "lobby": Color(1.0, 0.86, 0.74), "theater": Color(1.0, 0.71, 0.48) }
 const HOUSE := { "preshow": 0.8, "low": 0.15, "fade": 3.0 }  # the theater between films: its house lights up this far whatever the switch says (the switch: all the way); with a film on, out, and the sconces and step lights down to low; fading over this many seconds
 const STEP := { "color": Color(1.0, 0.62, 0.26), "energy": 0.35, "range": 1.6, "in": 0.25 }  # the aisles' step lights: low, amber, at each row's end (in: off the seats' edge, into the aisle)
 const PANEL_COLD := Color(0.188, 0.204, 0.239)  # 0x30343d: between stutters
@@ -112,7 +113,7 @@ func _ready() -> void:
 		var ref: float = minf(s.range / 3.0, 5.0)
 		var full: float = (SODIUM if s.kind == "spot" else s.on) / (PI * ref * ref) / (1.0 - ref / s.range)
 		if s.zone != null:
-			_zoned.append({ "light": l, "on": full, "zone": s.zone })
+			_zoned.append({ "light": l, "on": full, "zone": s.zone, "dark": s.get("dark", false) == true })  # (dark: on while its zone's off, the booth's red working lights)
 		else:
 			_night.append({ "light": l, "on": full, "delay": 0.0, "sodium": s.kind == "spot" })
 	# the ceiling's light panels: flat, white and unlit, up under a ceiling, a few meshes to a zone. Each gets a material
@@ -141,6 +142,11 @@ func _ready() -> void:
 		if zone in ["front", "aisles", "lounge"]:
 			lit.append(mi)
 	_panel_map(lit, d.boxes.floor)
+	for mi: MeshInstance3D in $"../World".find_children("*", "MeshInstance3D", true, false):  # bulbs and lamps on a switch: the level marks them, with which (meta "glow")
+		if mi.has_meta("glow") and zone_on.has(mi.get_meta("glow")):
+			var own: StandardMaterial3D = mi.mesh.surface_get_material(0).duplicate()
+			mi.set_surface_override_material(0, own)
+			_glowing.append([own, own.albedo_color, mi.get_meta("glow"), mi.get_meta("dark", false)])  # (dark: lit while it's off)
 	var f: Array = d.boxes.floor  # the sales floor: x0, x1, back wall z, ceiling
 	for i in WINDOWS:  # along the glass, just inside it, shining back into the store: what's in the way throws a shadow
 		var w := SpotLight3D.new()
@@ -309,8 +315,11 @@ func _find_steps() -> void:  # (after the level's solid: each light's set down o
 	var space := get_viewport().world_3d.direct_space_state
 	var mesh := BoxMesh.new()
 	mesh.size = Vector3(0.05, 0.03, 0.22)
+	var th: Array = _boxes.theater
 	for z in spots:
 		for x in [x0, x1]:
+			if x > th[1] - 0.6 or x < th[0] + 0.3:
+				continue  # (a row that runs to the wall: no aisle that end)
 			var top := Vector3(x, 3.0, z)
 			var hit := space.intersect_ray(PhysicsRayQueryParameters3D.create(top, top + Vector3.DOWN * 6.0))
 			if hit.is_empty():
@@ -427,12 +436,18 @@ func zone_at(p: Vector3) -> String:  # which switch lights this spot ("" outdoor
 	var th: Array = _boxes.theater
 	if p.x > f[0] and p.x < f[1] and p.z > -0.05 and p.z < f[2]:
 		return "front" if p.z < FLOOR_SPLIT[0] else "aisles" if p.z < FLOOR_SPLIT[1] + Level.dz else "lounge"
-	if p.x > b[0] and p.x < b[1] and p.z >= f[2] and p.z < b[3] and (p.z < b[2] or p.x < f[1]):
-		if p.x > f[1]:
+	if p.x > b[0] and p.x < b[1] and p.z >= f[2] and p.z < b[3]:
+		if p.x > _boxes.bohSplit[2] and p.z < b[2]:  # (the closet, at the hall's end)
 			return "closet"
 		return "hall" if p.z < b[2] else "breakroom" if p.x < _boxes.bohSplit[0] else "restroom"
 	if p.x > lo[0] and p.x < lo[1] and p.z >= lo[2] and p.z < lo[3]:
-		return "lobby"
+		if p.y > _boxes.tall[1]:
+			return ""  # (over its ceiling: outside, on the roof)
+		if p.x > _boxes.shaft[0] and p.z > _boxes.shaft[1]:
+			return "stairwell"  # the stairs up to the booth, the whole height of them
+		if p.y > _boxes.tall[0] and p.z >= _boxes.booth[2]:  # the projection booth, over the lobby's back
+			return "booth"
+		return "stairwell" if p.x > _boxes.shaft[0] and p.z > _boxes.shaft[1] else "lobby"  # (the stairs up to it)
 	if p.x > th[0] and p.x < th[1] and p.z >= th[2] and p.z < th[3]:
 		return "theater"
 	return ""
@@ -445,7 +460,7 @@ const SHUT := 4.0  # walls' worth when there's no way through at all (outdoors, 
 
 func walls(from: Vector3, to: Vector3) -> float:  # what's between two spots, for sound (ambience.gd): 0 the same room; each doorway on the
 	# way 0.35 wide open, 1 shut; SHUT with no way round. The cheapest way through the doorways (ponytail: a few rooms, so it's relaxed a few times over, not a proper graph search)
-	var a := zone_at(from) if from.y < 3.3 else ""  # (up on the roof: outside, whatever's under it)
+	var a := zone_at(from) if from.y < 3.3 or zone_at(from) in ["booth", "stairwell"] else ""  # (up on the roof: outside, whatever's under it)
 	var b := zone_at(to)
 	if a in OPEN_FLOOR:
 		a = "front"
@@ -499,8 +514,12 @@ func _process(dt: float) -> void:  # fluorescents restriking, tube by tube (ligh
 		s.visible = out > 0.01
 	if _bulb:
 		_bulb.albedo_color = BULB_ON if zone_on.closet else BULB_OFF
+	for g: Array in _glowing:  # the bulbs and lamps on a switch (the booth's): with it, flicker and all
+		var c: Color = BULB_OFF.lerp(g[1], (1.0 - zone_lvl[g[2]]) if g[3] else zone_lvl[g[2]])
+		if g[0].albedo_color != c:
+			g[0].albedo_color = c
 	for z: Dictionary in _zoned:
-		z.light.light_energy = z.on * zone_lvl[z.zone]
+		z.light.light_energy = z.on * ((1.0 - zone_lvl[z.zone]) if z.dark else zone_lvl[z.zone])
 	# lamps and lot lights from dusk on: the park's lamp straight on, the lot's sodiums each after its own delay, a slow
 	# start from a cold orange, then climbing to full
 	var night: bool = sky.level <= 0.5

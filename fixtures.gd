@@ -43,7 +43,7 @@ func _ready() -> void:
 			_flap_gate = n
 		elif p.distance_to(_v(ladders.hatch.lid)) < 0.02:
 			_lid = n
-		elif p.distance_to(Vector3(0, ladders.back.raise, Level.dz)) < 0.02 and n.get_child_count() >= 8:  # (out back: moved with the store's depth, level.gd)
+		elif n.has_meta("back_ladder"):  # (the level marks it: tools/remodel.gd moved it off the theater's side)
 			_slide = n
 	if _flap_pivot:  # no leaf over the pass-through: it's an open gap in the counter, gate and all
 		_flap_pivot.visible = false
@@ -87,7 +87,8 @@ func take_aim(from: Vector3, dir: Vector3, hit: Dictionary, hit_d: float) -> Str
 		if _near_ray(from, dir, _v(h.lid) + Vector3(0, -0.2, 0.3), 0.55, 2.4, hit_d):
 			aim = "hatch"
 			return "E — climb back down"
-		if _near_ray(from, dir, Vector3(b.x - 0.2, ladders.roofY + 1.4, b.z), 0.5, 2.4, INF):
+		var inward := Vector2(b.climb.up.x - b.x, b.climb.up.z - b.z).normalized() * 0.2  # (from the ladder toward the roof it reaches)
+		if _near_ray(from, dir, Vector3(b.x + inward.x, ladders.roofY + 1.4, b.z + inward.y), 0.5, 2.4, INF):
 			aim = "back"
 			return "E — climb down the back ladder" if back_down else "E — kick the ladder down\nit's latched up, out of reach from the ground"
 	else:

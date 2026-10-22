@@ -37,7 +37,7 @@ const KEYS := [
 	["E", "doors, seats, switches, lamps, ladders; at a screen: tape in / out"],
 	["E at the register", "the terminal: find a title, sections, episodes, staff pick"],
 	["R  /  I", "turn the tape over  /  a new cover for it from Jellyfin"],
-	["/  , .  [ ]", "pause  ·  hold: rewind / fast-forward  ·  episode back / on"],
+	["/  , .  [ ]", "pause  ·  hold: rewind / fast-forward  ·  episode back / on  (and the media keys)"],
 	["T  /  Y", "subtitles  /  sound track"],
 	["F", "sat down: full screen  ·  stood: fly  ·  held: time and weather"],
 	["P", "picture, graphics and controls"],

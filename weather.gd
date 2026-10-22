@@ -24,8 +24,8 @@ vec3 place(vec3 q, float fall, vec2 drift, vec3 cam) {
 	return p;
 }
 
-bool indoors(vec3 p) {   // under the store's roof (its footprint, the closet's bump, the theater)
-	return p.y < 4.05 && ((p.x > -7.84 && p.x < 11.1 && p.z > -0.1 && p.z < 33.1) || (p.x > 11.1 && p.x < 12.7 && p.z > 27.9 && p.z < 29.9) || (p.x > -7.07 && p.x < 1.33 && p.z > 33.1 && p.z < 46.6)) || p.y < 4.39 && p.x > 13.0 && p.x < 21.0 && p.z > 0.0 && p.z < 14.0;  // (and next door: sky.gd)
+bool indoors(vec3 p) {   // under a roof (the store's; the theater's, taller)
+	return p.y < 4.05 && p.x > -7.84 && p.x < 11.1 && p.z > -0.1 && p.z < 35.1 || p.y < 6.45 && p.x > -7.99 && p.x < 2.25 && p.z > 29.45 && p.z < 48.75 || p.y < 4.39 && p.x > 13.0 && p.x < 21.0 && p.z > 0.0 && p.z < 14.0;  // (and next door: sky.gd)
 }
 
 void vertex() {
@@ -33,18 +33,19 @@ void vertex() {
 	vec3 cam = CAMERA_POSITION_WORLD;
 	vec3 p;
 	vec3 head;
+	vec3 tail;
 	BODY
 	vE = UV.x;
-	VERTEX = indoors(head) ? vec3(0.0, 0.0, 1000.0) : (VIEW_MATRIX * vec4(p, 1.0)).xyz;  // (by the head, both ends: one end let through and the other flung behind you drew a line right across the view)
+	VERTEX = indoors(head) || indoors(tail) ? vec3(0.0, 0.0, 1000.0) : (VIEW_MATRIX * vec4(p, 1.0)).xyz;  // (by both ends, at both ends: one end let through and the other flung behind you drew a line right across the view; and a head just outside a wall, its tail blown in through it, drew rain indoors)
 }
 
 void fragment() {
 	FRAG
 }
 """
-const RAIN_BODY := "float sp = 9.0 + seed * 3.0; p = place(VERTEX, uT * sp, uDrift, cam); head = p; p += UV.x * 0.45 * vec3(-uWind.x / sp, 1.0, -uWind.y / sp);"  # the tail: where it was a moment ago, up and upwind
+const RAIN_BODY := "float sp = 9.0 + seed * 3.0; p = place(VERTEX, uT * sp, uDrift, cam); head = p; tail = head + 0.45 * vec3(-uWind.x / sp, 1.0, -uWind.y / sp); p = mix(head, tail, UV.x);"  # the tail: where it was a moment ago, up and upwind
 const RAIN_FRAG := "ALBEDO = vec3(0.78, 0.82, 0.9) * (1.0 - 0.55 * uNight); ALPHA = (0.12 + 0.3 * vE) * uK;"
-const SNOW_BODY := "float t = uT * (0.7 + seed * 0.5); p = place(VERTEX, t, uDrift * (0.8 + seed * 0.4), cam); p.x += sin(t * 0.9 + seed * 40.0) * 0.35; p.z += cos(t * 0.7 + seed * 30.0) * 0.25; head = p; POINT_SIZE = clamp((2.0 + seed * 3.0) * 40.0 / max(0.1, distance(p, cam)), 1.0, 7.0);"
+const SNOW_BODY := "float t = uT * (0.7 + seed * 0.5); p = place(VERTEX, t, uDrift * (0.8 + seed * 0.4), cam); p.x += sin(t * 0.9 + seed * 40.0) * 0.35; p.z += cos(t * 0.7 + seed * 30.0) * 0.25; head = p; tail = p; POINT_SIZE = clamp((2.0 + seed * 3.0) * 40.0 / max(0.1, distance(p, cam)), 1.0, 7.0);"
 const SNOW_FRAG := "ALBEDO = vec3(1.0 - 0.5 * uNight); ALPHA = (1.0 - smoothstep(0.2, 0.5, length(POINT_COORD - 0.5))) * 0.85 * uK;"
 const FAR := [4.0, -16.2, 68.0, 31.5, 12.0, 0.0, 0.0]  # centre x z, size x z, height, floor, carried with you?
 const NEAR := [0.0, 0.0, 26.0, 26.0, 9.5, -0.5, 1.0]
@@ -86,6 +87,9 @@ func _ready() -> void:
 	_bolt.light_energy = 0.0
 	_bolt.visible = false
 	_bolt.light_volumetric_fog_energy = 2.0  # (the rain lit up with it)
+	_bolt.shadow_enabled = true  # (only where the sky is: not through a roof into the theater, the booth, the stairs)
+	_bolt.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
+	_bolt.shadow_bias = 0.06
 	add_child(_bolt)
 	_glass_build()
 	_drifts_build.call_deferred()
@@ -123,7 +127,7 @@ func _fall(n: int, lines: bool, box: Array) -> MeshInstance3D:
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_LINES if lines else Mesh.PRIMITIVE_POINTS, arrays)
 	var sh := Shader.new()
 	sh.code = FALL.replace("BODY", RAIN_BODY if lines else SNOW_BODY).replace("FRAG", RAIN_FRAG if lines else SNOW_FRAG)
-	for zv in ["27.9", "29.9", "33.1", "46.6", "14.0"]:  # (the roofs' far ends, as deep as the store is: level.gd)
+	for zv in ["35.1", "48.75", "29.45", "14.0"]:  # (the roofs' far ends, as deep as the store is: level.gd)
 		sh.code = sh.code.replace(zv, str(Level.z(zv.to_float())))
 	var m := ShaderMaterial.new()
 	m.shader = sh
@@ -251,6 +255,7 @@ func _lightning(dt: float, raining: float) -> void:  # a thunderstorm's: a strik
 			_strike = {}
 	_bolt.visible = flash > 0.0
 	_bolt.light_energy = flash * BOLT.energy
+	_bolt.light_volumetric_fog_energy = 2.0 * (1.0 - sky._inside)  # (the rain out there lit up with it; not the haze indoors, which its shadow's too coarse to keep out)
 	$"../Lights".flash = flash
 	$"../WorldEnvironment".environment.background_energy_multiplier = 1.0 + flash * 4.0  # (the sky lit up)
 
@@ -291,7 +296,7 @@ func _glass_tick(dt: float, raining: float) -> void:  # beads: as wet as the gla
 # starts at its own point (the shelter gets it first) and they grow over hours of snowing, then slump away slowly
 # once it stops (faster in rain) (sky.js: wxDrifts)
 
-var ROOFS: Array = [[-7.84, 11.1, -0.1, 33.1], [11.1, 12.7, 27.9, 29.9], [-7.07, 1.33, 33.1, 46.6]].map(func(r: Array) -> Array: return [r[0], r[1], Level.z(r[2]), Level.z(r[3])])  # (as deep as the store is: level.gd)
+var ROOFS: Array = [[-7.84, 11.1, -0.1, 29.6, 4.0], [2.1, 11.1, 29.6, 35.1, 4.0], [-7.84, 2.1, 29.6, 48.6, 6.4]].map(func(r: Array) -> Array: return [r[0], r[1], Level.z(r[2]), Level.z(r[3]), r[4]])  # (as deep as the store is: level.gd)
 
 var drift := 0.0  # how deep they are, 0..1
 
@@ -322,7 +327,7 @@ func _drifts_build() -> void:
 		for a in 7:
 			var t := a / 7.0 * TAU + randf() * 0.4
 			_lump(lx + cos(t) * 0.36, -13.05 + sin(t) * 0.36, 0.16 + randf() * 0.08, 0.12, 0.08 + randf() * 0.06)
-	var in_foot := func(x: float, z: float) -> bool: return ROOFS.any(func(r: Array) -> bool: return x > r[0] and x < r[1] and z > r[2] and z < r[3])
+	var in_foot := func(x: float, z: float, y: float) -> bool: return ROOFS.any(func(r: Array) -> bool: return x > r[0] and x < r[1] and z > r[2] and z < r[3] and absf(r[4] - y) < 0.1)
 	for r: Array in ROOFS:  # up on the roof, against the inside of the parapet (not where one part of the roof runs on into the next)
 		for s: Array in [[r[0], r[2], r[1], r[2], 0.0, 1.0], [r[0], r[3], r[1], r[3], 0.0, -1.0], [r[0], r[2], r[0], r[3], 1.0, 0.0], [r[1], r[2], r[1], r[3], -1.0, 0.0]]:  # each side, the last two pointing in
 			var length := Vector2(s[2] - s[0], s[3] - s[1]).length()
@@ -330,8 +335,8 @@ func _drifts_build() -> void:
 			while t < length - 0.35:
 				var x: float = s[0] + (s[2] - s[0]) * t / length
 				var z: float = s[1] + (s[3] - s[1]) * t / length
-				if not in_foot.call(x - s[4] * 0.05, z - s[5] * 0.05):
-					_lump(x + s[4] * 0.26, z + s[5] * 0.26, 0.3 + randf() * 0.45, 0.14 + randf() * 0.1, 0.05 + randf() * 0.07, 4.0 - 0.01, PI / 2.0 if s[4] != 0.0 else 0.0)
+				if not in_foot.call(x - s[4] * 0.05, z - s[5] * 0.05, r[4]):
+					_lump(x + s[4] * 0.26, z + s[5] * 0.26, 0.3 + randf() * 0.45, 0.14 + randf() * 0.1, 0.05 + randf() * 0.07, r[4] - 0.01, PI / 2.0 if s[4] != 0.0 else 0.0)
 				t += 0.35 + randf() * 0.5
 	var dome := SphereMesh.new()
 	dome.radius = 1.0

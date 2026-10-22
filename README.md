@@ -37,6 +37,7 @@ the doors, what you're carrying) and puts it back next time; the settings' NEW S
 | T / Y | Subtitles (each text track the film has, then off) / the next sound track: both remembered by language for the next film |
 | , . (held) / [ ] | Rewind / fast-forward (a bar shows where to; plays from there half a second after letting go); the episode before / after |
 | / | Pause the tape that's playing; again: play |
+| Media keys | Play/pause, stop (pauses), previous / next episode. On Linux the desktop hands these over MPRIS, so they work with the game in the background too, and JellyVault shows up in the desktop's media controls (needs `python3` with PyGObject, which most desktops have) |
 | Wheel, sat down | Zoom; all the way in on a screen that's playing, one more notch: the picture full screen (back out: the room) |
 | F | Sat down with a tape on: full screen and back; stood up: fly. Held: the time and weather wheel (pick with the mouse) |
 | L / M / J / H | Skip an hour / mute / fold the log / hide everything written on screen |
@@ -65,11 +66,12 @@ movie's a new release, out on the walls. Edit it to taste.
 | `covers.gd` | I: a new cover, a re-identify, another shelf |
 | `save.gd` | Where everything was left, kept and put back |
 | `picture.gd` | The settings (P) |
-| `world/world.scn`, `data/interact.json` | VaultBuster's level and where everything in it is |
+| `world/world.scn`, `data/interact.json` | VaultBuster's level and where everything in it is; its back reworked by `tools/remodel.gd` (the closet in, deeper back rooms, a taller theater with a projection booth upstairs) |
 | the rest | The player, doors, lights, the sky and weather, sound: VaultBuster's |
 
 `godot --headless --path . --script tools/jellyfin_check.gd` checks the sections, the layout and the subtitle reader without a server.
-`godot --path . -- --demo --shot --at=x,y,z,yaw,pitch` saves `shot.png` from there.
+`godot --path . -- --demo --shot --at=x,y,z,yaw,pitch` saves `shot.png` from there (`--hour=h`, `--weather=rain|snow|fog`, `--lights` for every room's lights on, `--walk=s` to walk forward that long first and print where it got to).
+`godot --path . --resolution 1400x1400 -s tools/plan.gd -- [--area=x0,z0,x1,z1] [--cut=y] [--out]` saves `plan.png`, the level from straight above with its roof off; `tools/inventory.gd` lists what's where in it.
 `tools/shots.sh <name>` takes the same seven views every time into `shots/<name>/`, to compare before and after a change.
 `godot --path . -- --demo --snapshot [--hour=h]` saves the store as the game built it to `baked/snapshot.scn`: open it in
 the editor to look round everything the scripts make (a still to look at: edits to it don't go back into the game).

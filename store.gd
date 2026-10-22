@@ -142,7 +142,7 @@ static func runs(k: int) -> Dictionary:  # the shelf runs, each { at (its first 
 	var extra := floori(dz / BAY.len)
 	var wall := [  # reading round: the far wall front to back, the back wall right to left, the register wall back to front
 		{ "at": Vector3(STORE_X - 0.1, 0, 26.8 + dz), "ry": PI, "dir": Vector3(0, 0, -1), "bays": 11 + extra, "spec": BAY },
-		{ "at": Vector3(3.89, 0, STORE_Z - 0.1 + dz), "ry": PI / 2, "dir": Vector3(1, 0, 0), "bays": 3, "spec": BAY },
+		{ "at": Vector3(5.55, 0, STORE_Z - 0.1 + dz), "ry": PI / 2, "dir": Vector3(1, 0, 0), "bays": 3, "spec": BAY },
 		{ "at": Vector3(WALL_L + 0.1 + BAY.depth, 0, STORE_Z - 0.1 + dz), "ry": PI / 2, "dir": Vector3(1, 0, 0), "bays": 2, "spec": BAY },
 		{ "at": Vector3(WALL_L + 0.1, 0, 8.1), "ry": 0.0, "dir": Vector3(0, 0, 1), "bays": 12 + extra, "spec": BAY },
 	]

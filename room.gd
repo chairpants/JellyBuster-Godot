@@ -31,11 +31,16 @@ global uniform vec4 uFloorBox;  // sales floor: x0, x1, back wall z, ceiling
 global uniform vec4 uBohBox;    // back of house: x0, x1, hall|rooms z, z1
 global uniform vec4 uLobbyBox;
 global uniform vec4 uThBox;     // auditorium: x0, x1, z0, z1
+global uniform vec2 uTall;      // the booth's floor (a little under it), the booth's and auditorium's ceiling
+global uniform float uBoothZ;   // the booth, over the lobby from here back
+global uniform vec2 uShaft;     // the stairwell up to it, in the lobby's corner: from this x, this z
+global uniform float uBoothLight;  // its switch
+global uniform float uStairLight;  // the stairwell's
 global uniform sampler2D uPanels : filter_linear_mipmap, repeat_disable;   // the sales floor's ceiling panels from below (lights.gd's _panel_map)
 global uniform vec4 uPanelBox;  // where that map is: x0, z0, its width, its depth
 const float PANEL_REFLECT = 12.0;  // how bright a panel looks in a sleeve, the tile
 global uniform vec2 uZoneSplit;  // the sales floor's zones: front | aisles z, aisles | lounge z
-global uniform vec2 uBohSplit;  // break room | restroom x, ceiling
+global uniform vec3 uBohSplit;  // break room | restroom x, ceiling, closet | hall x
 global uniform vec2 uThLight;   // x = lobby switch, y = theater house-lights switch
 global uniform float uThSconce;
 global uniform vec3 uInSky; global uniform vec3 uInGround; global uniform vec3 uInAmb; global uniform vec3 uInDirC; global uniform vec3 uInDir;
@@ -101,13 +106,15 @@ void fragment() {
 		rl = max(max(uZone.x * f1, uZone.y * f2), uZone.z * f3) * fl + (day * uDayC + (1.0 - day) * uNightC) * (0.015 + 0.16 * win * win) * facing;
 		vec3 tv = P - uVidAt;
 		rl += uVid.rgb * uVid.a * (VID_TV / (1.0 + dot(tv, tv) / (VID_TV_R * VID_TV_R)) + VID_FLOOR);   // the TV's glow, a pool round the lounge; and the monitors over the aisles, a little everywhere
-	} else if (P.x > uBohBox.x && P.x < uBohBox.y && P.z >= uFloorBox.z && P.z < uBohBox.w && P.y < uBohSplit.y + 0.05 && (P.z < uBohBox.z || P.x < uFloorBox.y)) {
-		bool closet = P.x > uFloorBox.y && P.z < uBohBox.z;   // the janitor's closet: one bare bulb, warm
+	} else if (P.x > uBohBox.x && P.x < uBohBox.y && P.z >= uFloorBox.z && P.z < uBohBox.w && P.y < uBohSplit.y + 0.05) {
+		bool closet = P.x > uBohSplit.z && P.z < uBohBox.z;   // the janitor's closet, at the hall's end: one bare bulb, warm
 		float lvl = closet ? 0.8 * uBoh.w : P.z < uBohBox.z ? uBoh.x : (P.x < uBohSplit.x ? uBoh.y : uBoh.z);
 		rl = (0.03 + 0.97 * lvl) * fl * (closet ? vec3(1.12, 0.95, 0.74) : vec3(1.0));
-	} else if (P.x > uLobbyBox.x && P.x < uLobbyBox.y && P.z >= uLobbyBox.z && P.z < uLobbyBox.w && P.y < uBohSplit.y + 0.05) {
-		rl = (0.04 + 0.96 * uThLight.x) * fl * vec3(1.08, 0.93, 0.80);
-	} else if (P.x > uThBox.x && P.x < uThBox.y && P.z >= uThBox.z && P.z < uThBox.w && P.y < uFloorBox.w + 0.1) {
+	} else if (P.x > uLobbyBox.x && P.x < uLobbyBox.y && P.z >= uLobbyBox.z && P.z < uLobbyBox.w && (P.y < uBohSplit.y + 0.05 || P.z >= uBoothZ && P.y > uTall.x && P.y < uTall.y + 0.1)) {   // (and the projection booth over its back, and the stairs up to it: on a switch of their own, a cooler light)
+		bool stairs = P.x > uShaft.x && P.z > uShaft.y;
+		bool booth = stairs || P.y > uTall.x;
+		rl = booth ? (0.02 + 0.3 * (stairs ? uStairLight : uBoothLight)) * fl * vec3(1.12, 0.92, 0.7) : (0.04 + 0.96 * uThLight.x) * fl * vec3(1.08, 0.93, 0.80);   // (back here, no tubes: a dim warm room round its lamps' pools, lights.gd's)
+	} else if (P.x > uThBox.x && P.x < uThBox.y && P.z >= uThBox.z && P.z < uThBox.w && P.y < uTall.y + 0.1) {
 		rl = (0.025 + 0.55 * uThLight.y + 0.12 * uThSconce) * fl * vec3(1.15, 0.82, 0.55);   // house lights + a low warm sconce wash
 		rl += uVid.rgb * uVid.a * VID_THEATER;   // the picture, off the screen onto the walls, the ceiling, the seats
 	} else {
@@ -192,7 +199,10 @@ func _enter_tree() -> void:  # (before anything's _ready: tapes.gd keeps hold of
 	var b: Dictionary = Level.data().lights.boxes
 	for pair in [["uFloorBox", b.floor], ["uBohBox", b.boh], ["uLobbyBox", b.lobby], ["uThBox", b.theater]]:
 		glob(pair[0], Vector4(pair[1][0], pair[1][1], pair[1][2], pair[1][3]))
-	glob("uBohSplit", Vector2(b.bohSplit[0], b.bohSplit[1]))
+	glob("uBohSplit", Vector3(b.bohSplit[0], b.bohSplit[1], b.bohSplit[2]))
+	glob("uTall", Vector2(b.tall[0], b.tall[1]))
+	glob("uBoothZ", b.booth[2])
+	glob("uShaft", Vector2(b.shaft[0], b.shaft[1]))
 	var split: Array = preload("res://lights.gd").FLOOR_SPLIT
 	glob("uZoneSplit", Vector2(split[0], split[1] + Level.dz))  # (the same lines the ceiling panels are sorted by: lights.gd's zone_at)
 	var swapped := light($"../World")
@@ -341,6 +351,8 @@ func _process(_dt: float) -> void:  # applyLighting: the switches' levels and th
 	glob("uZone", Vector4(z.front, z.aisles, z.lounge, sky.level))
 	glob("uBoh", Vector4(z.hall, z.breakroom, z.restroom, z.closet))
 	glob("uThLight", Vector2(z.lobby, lights.house_lights()))  # (up between films, down while one's on: lights.gd)
+	glob("uBoothLight", z.booth)
+	glob("uStairLight", z.stairwell)
 	glob("uSunDir", sky.sun_dir)
 	glob("uSunC", Vector3(sky.sun_c.r, sky.sun_c.g, sky.sun_c.b))
 	glob("uDayC", sky.day_c)

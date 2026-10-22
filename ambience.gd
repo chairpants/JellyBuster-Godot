@@ -17,8 +17,8 @@ extends Node
 
 const RATE := 22050
 const HEAD := 0.5  # what's baked is kept at half, for room: the player makes it up
-var ZONES: Array = [["front", 0.0, 3.45, 3.5], ["aisles", -4.0, 3.45, 13.0], ["aisles", 5.0, 3.45, 16.0], ["lounge", 0.0, 3.45, 22.5], ["hall", 6.0, 2.6, 29.0],
-	["breakroom", 5.0, 2.6, 31.5], ["restroom", 9.6, 2.6, 31.5], ["lobby", -2.5, 3.0, 30.5], ["theater", -3.0, 5.0, 38.0]].map(func(z: Array) -> Array: return [z[0], z[1], z[2], Level.z(z[3])])  # a hum over each light zone (as deep as the store is: level.gd)
+var ZONES: Array = [["front", 0.0, 3.45, 3.5], ["aisles", -4.0, 3.45, 13.0], ["aisles", 5.0, 3.45, 16.0], ["lounge", 0.0, 3.45, 22.5], ["hall", 5.7, 2.6, 29.0],
+	["breakroom", 4.9, 2.6, 32.4], ["restroom", 9.4, 2.6, 32.4], ["lobby", -2.5, 3.0, 31.5], ["booth", -3.5, 5.9, 32.3], ["stairwell", 0.6, 5.9, 32.3], ["theater", -3.0, 5.0, 40.0]].map(func(z: Array) -> Array: return [z[0], z[1], z[2], Level.z(z[3])])  # a hum over each light zone (as deep as the store is: level.gd)
 
 var muted := false
 
@@ -154,7 +154,7 @@ func step(at: Vector3, weight := 1.0) -> void:  # heel strike + sole scuff: tile
 	if at.y > 3.3 or $"../Lights".zone_at(at) == "":
 		_shot("step_wet" if $"../Weather".wet > 0.35 else "step_out", at + Vector3(0, 0.05, 0), 0.13 * weight * randf_range(0.8, 1.2), 1.2)
 		return
-	var tile := at.z < 4.35 or (at.z > Level.z(28.0) and at.x > 2.0 and at.z < Level.z(33.0))
+	var tile := at.z < 4.35 or (at.z > Level.z(28.0) and at.x > 2.0 and at.z < Level.z(35.0))
 	_shot("step_tile" if tile else "step_carpet", at + Vector3(0, 0.05, 0), (0.16 if tile else 0.09) * weight * randf_range(0.8, 1.2), 1.2)
 
 

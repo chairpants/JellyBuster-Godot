@@ -60,13 +60,33 @@ uThBox={
 "type": "vec4",
 "value": Vector4(1, 1, 1, 1)
 }
+uTall={
+"type": "vec2",
+"value": Vector2(1, 1)
+}
+uBoothZ={
+"type": "float",
+"value": 0.0
+}
+uShaft={
+"type": "vec2",
+"value": Vector2(1, 1)
+}
+uBoothLight={
+"type": "float",
+"value": 0.0
+}
+uStairLight={
+"type": "float",
+"value": 0.0
+}
 uZoneSplit={
 "type": "vec2",
 "value": Vector2(10, 19)
 }
 uBohSplit={
-"type": "vec2",
-"value": Vector2(1, 1)
+"type": "vec3",
+"value": Vector3(1, 1, 1)
 }
 uThLight={
 "type": "vec2",

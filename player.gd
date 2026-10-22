@@ -42,20 +42,49 @@ func _ready() -> void:
 	if not ("--shot" in args or "--snapshot" in args):  # (not for --shot: it'd take the mouse off whoever's at the machine)
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 		return
-	# godot --path . -- --demo --shot [--at=x,y,z,yaw,pitch] (degrees) [--hour=h]: shot.png from there, a few seconds in, then quits
+	# godot --path . -- --demo --shot [--at=x,y,z,yaw,pitch] (degrees) [--hour=h] [--weather=rain|snow|fog[,1 wild]] [--lights] [--off=zone] [--flash] [--walk=s]: shot.png from there, a few seconds in, then quits
 	# (--snapshot instead: the whole store as built, as a scene for the editor: tools/snapshot.gd)
 	for a in args:
 		if a.begins_with("--hour="):
 			Clock.h = a.trim_prefix("--hour=").to_float()
+		elif a.begins_with("--weather="):
+			var wx := a.trim_prefix("--weather=").split(",")  # (rain,1: a thunderstorm)
+			$"../Weather".set_now.call_deferred(wx[0], 0.9, 0.0, wx[1].to_float() if wx.size() > 1 else 0.0)
 	await get_tree().create_timer(4.0).timeout
 	for a in args:
-		if a.begins_with("--at="):
+		if a == "--lights":  # every room's lights on
+			for z: String in $"../Lights".zone_on:
+				$"../Lights".put_zone(z, true)
+		elif a == "--flash":  # a lightning strike, held (weather.gd's, at full)
+			var wx: Node = $"../Weather"
+			wx.set_process(false)
+			wx._bolt.visible = true
+			wx._bolt.light_energy = wx.BOLT.energy
+			wx._bolt.light_volumetric_fog_energy = 2.0 * (1.0 - $"../Sky"._inside)
+			$"../Lights".flash = 1.0
+			$"../WorldEnvironment".environment.background_energy_multiplier = 5.0
+		elif a.begins_with("--off="):  # and that one's off
+			$"../Lights".put_zone.call_deferred(a.trim_prefix("--off="), false)
+		elif a.begins_with("--at="):
 			var v := a.trim_prefix("--at=").split_floats(",")
 			global_position = Vector3(v[0], v[1], v[2])
 			rotation.y = deg_to_rad(v[3])
 			cam.rotation.x = deg_to_rad(v[4]) if v.size() > 4 else 0.0
 			fly = true
 			$Shape.disabled = true
+	for a in args:
+		if a.begins_with("--walk="):  # walk forward that many seconds (not flying, solid), and say where it got to
+			fly = false
+			$Shape.disabled = false
+			var w := InputEventKey.new()
+			w.physical_keycode = KEY_W
+			w.pressed = true
+			Input.parse_input_event(w)
+			await get_tree().create_timer(a.trim_prefix("--walk=").to_float()).timeout
+			w = w.duplicate()
+			w.pressed = false
+			Input.parse_input_event(w)
+			print("walk: got to %s" % global_position)
 	await get_tree().create_timer(1.0).timeout
 	await RenderingServer.frame_post_draw
 	if "--snapshot" in args:
