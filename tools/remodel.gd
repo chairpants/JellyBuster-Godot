@@ -23,6 +23,9 @@ extends SceneTree
 ## hall: the back hall less bare. A rubber base along its walls; the break room's and the restroom's doors panelled, kick
 ##   plates both sides, hinges; the ceiling lights framed; an extinguisher on its bracket and its sign; a lit EXIT over the
 ##   way back to the store; the staff's corkboard between the doors, notices pinned to it
+## roof: the store's roof less bare. On the tall block's wall over it: the booth's exhaust louvre, two scuppers off its roof
+##   and their downspouts to splash blocks, a wall pack, a disconnect and its conduit; a satellite dish on a ballasted
+##   mount; next door's rooftop unit, a plain box, given its louvres, its fan, its rails and its disconnect
 ## restroom: the floors either side of the wall between the restroom and the break room meeting under it, square (boh
 ##   moved that wall over, but only the floors' far corners with it: a wedge of the break room's floor in the restroom).
 ##
@@ -72,6 +75,12 @@ func _init() -> void:
 				quit(1)
 				return
 			_hall()
+		"roof":
+			if not "theater" in done:
+				push_error("remodel: roof goes after theater")
+				quit(1)
+				return
+			_roof_v2()
 		"railings":
 			if not "theater" in done:
 				push_error("remodel: railings go after theater")
@@ -104,7 +113,7 @@ func _init() -> void:
 	var err := packed.pack(w)
 	if err == OK:
 		err = ResourceSaver.save(packed, WORLD, ResourceSaver.FLAG_COMPRESS)  # (as it came: compressed)
-	if not section in ["strip", "restroom", "railings", "hall"]:  # (the level only: the data's as it was)
+	if not section in ["strip", "restroom", "railings", "hall", "roof"]:  # (the level only: the data's as it was)
 		var f := FileAccess.open(DATA, FileAccess.WRITE)
 		f.store_string(_json(data))
 		f.close()
@@ -114,6 +123,79 @@ func _init() -> void:
 
 
 # ---- the sections
+
+const ROOFS := { "wall": 29.45, "low": 4.0, "high": 6.4, "alu": Color("c9ccd0"), "galv": Color("9da3a8"), "block": Color("8d8f91"), "dark": Color("2b2d30"), "unit": Color("b9bcb5") }
+
+
+func _roof_v2() -> void:
+	var zw: float = ROOFS.wall  # (the tall block's face, over the store's roof)
+	var lo: float = ROOFS.low
+	var hi: float = ROOFS.high
+	var par := "out/roof"
+	# the booth's exhaust: an aluminium louvre high on the wall, its blades angled down
+	var lv := [0.0, 5.15, 0.9, 0.62]  # middle x, middle y, wide, tall
+	block(par, "louvre frame", Vector3(lv[0] - lv[2] / 2.0, lv[1] - lv[3] / 2.0, zw - 0.06), Vector3(lv[0] + lv[2] / 2.0, lv[1] + lv[3] / 2.0, zw), ROOFS.alu)
+	block(par, "louvre dark", Vector3(lv[0] - lv[2] / 2.0 + 0.04, lv[1] - lv[3] / 2.0 + 0.04, zw - 0.061), Vector3(lv[0] + lv[2] / 2.0 - 0.04, lv[1] + lv[3] / 2.0 - 0.04, zw - 0.06), ROOFS.dark)
+	for k in 7:
+		var y: float = lv[1] - lv[3] / 2.0 + 0.08 + k * 0.075
+		bar(par, "louvre blade", Vector3(lv[0] - lv[2] / 2.0 + 0.04, y + 0.02, zw - 0.065), Vector3(lv[0] + lv[2] / 2.0 - 0.04, y + 0.02, zw - 0.065), Vector2(0.06, 0.006), ROOFS.alu)
+	# the tall roof's drainage: a scupper through the parapet, a collector head, a downspout to a splash block
+	for x: float in [-2.6, 1.55]:
+		block(par, "scupper", Vector3(x - 0.12, hi - 0.06, zw - 0.18), Vector3(x + 0.12, hi + 0.04, zw), ROOFS.galv)
+		block(par, "collector head", Vector3(x - 0.14, hi - 0.4, zw - 0.2), Vector3(x + 0.14, hi - 0.1, zw - 0.02), ROOFS.galv)
+		block(par, "downspout", Vector3(x - 0.05, lo + 0.12, zw - 0.14), Vector3(x + 0.05, hi - 0.4, zw - 0.06), ROOFS.galv)
+		for y: float in [lo + 0.8, (lo + hi) / 2.0, hi - 0.6]:
+			block(par, "downspout strap", Vector3(x - 0.065, y, zw - 0.15), Vector3(x + 0.065, y + 0.03, zw), ROOFS.galv)
+		bar(par, "downspout elbow", Vector3(x, lo + 0.17, zw - 0.1), Vector3(x, lo + 0.06, zw - 0.32), Vector2(0.1, 0.1), ROOFS.galv)
+		block(par, "splash block", Vector3(x - 0.17, lo, zw - 0.85), Vector3(x + 0.17, lo + 0.05, zw - 0.3), ROOFS.block)
+	# a wall pack over the way down the iron stair, and the disconnect for the unit, its conduit down to the roof
+	block(par, "wall pack", Vector3(-1.0, 5.85, zw - 0.16), Vector3(-0.72, 6.07, zw), Color("5a4b3a"))
+	block(par, "wall pack lens", Vector3(-0.98, 5.84, zw - 0.15), Vector3(-0.74, 5.86, zw - 0.02), Color("f1e3b5"))
+	block(par, "disconnect", Vector3(0.75, 4.75, zw - 0.14), Vector3(1.05, 5.15, zw), ROOFS.unit)
+	block(par, "disconnect handle", Vector3(1.05, 4.88, zw - 0.1), Vector3(1.08, 5.02, zw - 0.06), Color("c8102e"))
+	block(par, "conduit", Vector3(0.88, lo + 0.05, zw - 0.05), Vector3(0.92, 4.75, zw - 0.01), ROOFS.galv)
+	block(par, "conduit", Vector3(0.88, lo + 0.05, zw - 1.6), Vector3(0.92, lo + 0.09, zw - 0.01), ROOFS.galv)
+	for z: float in [zw - 0.5, zw - 1.1]:
+		block(par, "conduit support", Vector3(0.82, lo, z - 0.06), Vector3(0.98, lo + 0.05, z + 0.06), ROOFS.dark)
+	# a satellite dish on a ballasted mount: a frame of tube on four blocks, a mast, the dish looking south and up, its feed arm
+	var d := Vector3(-6.3, lo, 15.0)  # (by the west parapet: clear of the units, and of the roof's screen)
+	for c: Vector2 in [Vector2(-0.45, -0.45), Vector2(0.45, -0.45), Vector2(-0.45, 0.45), Vector2(0.45, 0.45)]:
+		block(par, "ballast block", d + Vector3(c.x - 0.2, 0.0, c.y - 0.1), d + Vector3(c.x + 0.2, 0.2, c.y + 0.1), ROOFS.block)
+	for e: Array in [[Vector3(-0.5, 0.21, -0.45), Vector3(0.5, 0.21, -0.45)], [Vector3(-0.5, 0.21, 0.45), Vector3(0.5, 0.21, 0.45)], [Vector3(-0.45, 0.21, -0.5), Vector3(-0.45, 0.21, 0.5)], [Vector3(0.45, 0.21, -0.5), Vector3(0.45, 0.21, 0.5)], [Vector3(-0.45, 0.21, -0.45), Vector3(0.45, 0.21, 0.45)], [Vector3(-0.45, 0.21, 0.45), Vector3(0.45, 0.21, -0.45)]]:
+		bar(par, "mount frame", d + e[0], d + e[1], Vector2(0.04, 0.04), ROOFS.galv)
+	cylinder(par, "dish mast", d + Vector3(0, 0.75, 0), 0.03, 1.1, Vector3.UP, ROOFS.galv)
+	var dish := SphereMesh.new()
+	dish.radius = 0.42
+	dish.height = 0.32
+	dish.is_hemisphere = true
+	dish.radial_segments = 28
+	dish.rings = 8
+	var dm := _add(par, "dish", dish)
+	var toward := Vector3(0.3, 0.55, -0.78).normalized()  # (the dish's hollow faces where it's aimed: south, and up)
+	dm.global_transform = Transform3D(Basis(Quaternion(Vector3.DOWN, toward)), d + Vector3(0, 1.38, 0) - toward * 0.05)
+	dm.mesh.surface_set_material(0, _mat(Color("e9eaea")))
+	(dm.mesh.surface_get_material(0) as StandardMaterial3D).cull_mode = BaseMaterial3D.CULL_DISABLED
+	bar(par, "dish arm", d + Vector3(0, 1.22, 0), d + Vector3(0, 1.38, 0) + toward * 0.55, Vector2(0.025, 0.025), ROOFS.galv)
+	block(par, "lnb", d + Vector3(-0.04, 1.38, -0.04) + toward * 0.55, d + Vector3(0.04, 1.46, 0.04) + toward * 0.55, ROOFS.dark)
+	bar(par, "dish cable", d + Vector3(0.03, 0.25, 0.0), d + Vector3(1.6, 0.03, 1.2), Vector2(0.012, 0.012), Color("1d1f22"))
+	# next door's unit (a plain box): louvres down its long sides, a fan on top in its guard, rails under it, a disconnect
+	var u := _bounds(_node("out/group of 323/box 1_60 x 0_90 x 1_10"))
+	for side in [-1, 1]:
+		var zf: float = (u.position.z if side < 0 else u.end.z) + side * 0.004
+		for k in 9:
+			var y: float = u.position.y + 0.12 + k * 0.075
+			block("out", "unit louvre", Vector3(u.position.x + 0.1, y, minf(zf, zf + side * 0.012)), Vector3(u.end.x - 0.45, y + 0.035, maxf(zf, zf + side * 0.012)), Color("8f938c"))
+		block("out", "unit panel seam", Vector3(u.end.x - 0.42, u.position.y + 0.06, minf(zf, zf + side * 0.006)), Vector3(u.end.x - 0.4, u.end.y - 0.06, maxf(zf, zf + side * 0.006)), Color("8f938c"))
+	var top := Vector3(u.get_center().x - 0.25, u.end.y, u.get_center().z)
+	cylinder("out", "unit fan shroud", top + Vector3(0, 0.05, 0), 0.38, 0.1, Vector3.UP, Color("8f938c"))
+	cylinder("out", "unit fan", top + Vector3(0, 0.07, 0), 0.34, 0.02, Vector3.UP, ROOFS.dark)
+	for k in 4:
+		var a := k * PI / 4.0
+		bar("out", "unit fan guard", top + Vector3(cos(a) * 0.36, 0.11, sin(a) * 0.36), top + Vector3(-cos(a) * 0.36, 0.11, -sin(a) * 0.36), Vector2(0.01, 0.01), ROOFS.galv)
+	for zr: float in [u.position.z + 0.1, u.end.z - 0.1]:
+		block("out", "unit rail", Vector3(u.position.x - 0.1, u.position.y - 0.08, zr - 0.04), Vector3(u.end.x + 0.1, u.position.y, zr + 0.04), ROOFS.dark)
+	block("out", "unit disconnect", Vector3(u.end.x + 0.01, u.position.y + 0.3, u.get_center().z - 0.12), Vector3(u.end.x + 0.12, u.position.y + 0.62, u.get_center().z + 0.12), ROOFS.unit)
+
 
 const HALL := { "x": [2.0, 9.4], "z": [28.1, 29.7], "base": Color("2e2f31"), "door": Color("d4d6d8"), "trim": Color("bfc3c7"), "steel": Color("b8bcc0"), "cork": Color("b0875a"), "red": Color("c8102e") }
 
