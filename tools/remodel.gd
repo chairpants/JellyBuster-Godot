@@ -38,6 +38,10 @@ extends SceneTree
 ##   plate behind; and the ceiling given its sprinkler heads, a grid of them clear of the light panels
 ## lavatory: the restroom furnished as one is: grab bars by the toilet, a baby-changing station folded up on the bare
 ##   east wall, a floor drain, an exhaust fan's grille in the ceiling
+## booth: the booth's machines less blocky. The projector's head given its side door and knobs, the gate's rollers
+##   and the film's loop down through it, a lens turret; a motor under it, its console's switch panel and hour meter.
+##   The lamp house a door, its handle and the sight glass showing the arc, a maker's plate. The platters lipped, the
+##   brain's payout rollers. The sound rack's rails and screws, its units' VU meters and knobs
 ## restroom: the floors either side of the wall between the restroom and the break room meeting under it, square (boh
 ##   moved that wall over, but only the floors' far corners with it: a wedge of the break room's floor in the restroom).
 ##
@@ -119,6 +123,12 @@ func _init() -> void:
 				quit(1)
 				return
 			_lavatory()
+		"booth":
+			if not "theater" in done:
+				push_error("remodel: booth goes after theater")
+				quit(1)
+				return
+			_booth_v2()
 		"railings":
 			if not "theater" in done:
 				push_error("remodel: railings go after theater")
@@ -151,7 +161,7 @@ func _init() -> void:
 	var err := packed.pack(w)
 	if err == OK:
 		err = ResourceSaver.save(packed, WORLD, ResourceSaver.FLAG_COMPRESS)  # (as it came: compressed)
-	if not section in ["strip", "restroom", "railings", "hall", "roof", "closet", "stairwell", "breakroom", "aisles", "lavatory"]:  # (the level only: the data's as it was)
+	if not section in ["strip", "restroom", "railings", "hall", "roof", "closet", "stairwell", "breakroom", "aisles", "lavatory", "booth"]:  # (the level only: the data's as it was)
 		var f := FileAccess.open(DATA, FileAccess.WRITE)
 		f.store_string(_json(data))
 		f.close()
@@ -536,6 +546,78 @@ func _lavatory() -> void:
 	block("boh", "exhaust grille", Vector3(9.2, 2.685, 32.8), Vector3(9.55, 2.7, 33.15), Color("e6e8ea"))
 	for k in 7:
 		block("boh", "exhaust slat", Vector3(9.23, 2.683, 32.83 + k * 0.045), Vector3(9.52, 2.685, 32.85 + k * 0.045), Color("8f9398"))
+
+
+func _booth_v2() -> void:  # (where _booth_kit put them)
+	var B := BOOTH
+	var px := -1.42
+	var dark := Color("2b2d30")
+	var cast := Color("3a3d42")
+	var head := Color("4a4f57")
+	var alu := Color("b8bcc2")
+	var film := Color("3b2a1e")
+	# the head: its operating side (-x) a door with two knobs and a window onto the gate; rollers above and below the gate, the loop of film through them
+	var hx := px - 0.2  # the head's -x face
+	block("lobby", "projector head door", Vector3(hx - 0.012, B + 1.03, 34.12), Vector3(hx, B + 1.39, 34.55), Color("565b63"))
+	block("lobby", "projector gate window", Vector3(hx - 0.014, B + 1.16, 34.32), Vector3(hx - 0.012, B + 1.27, 34.44), Color("15171a"))
+	for y: float in [B + 1.1, B + 1.33]:
+		cylinder("lobby", "projector knob", Vector3(hx - 0.03, y, 34.2), 0.022, 0.03, Vector3.RIGHT, C.iron)
+	for r: Array in [[B + 1.43, 34.35], [B + 0.98, 34.35], [B + 1.06, 34.62], [B + 1.32, 34.62]]:
+		cylinder("lobby", "projector roller", Vector3(hx - 0.035, r[0], r[1]), 0.03, 0.03, Vector3.RIGHT, alu)
+	var path := [Vector3(px, B + 1.44, 34.2), Vector3(hx - 0.04, B + 1.45, 34.35), Vector3(hx - 0.04, B + 1.33, 34.65), Vector3(hx - 0.04, B + 1.05, 34.65), Vector3(hx - 0.04, B + 0.96, 34.35), Vector3(hx - 0.04, B + 0.96, 33.9)]
+	for i in path.size() - 1:
+		bar("lobby", "film", path[i], path[i + 1], Vector2(0.003, 0.035), film)
+	# a lens turret round the lens, at the port
+	cylinder("lobby", "lens turret", Vector3(px, PORT_Y, 34.62), 0.11, 0.05, Vector3.BACK, head)
+	cylinder("lobby", "lens turret knob", Vector3(px - 0.11, PORT_Y, 34.62), 0.015, 0.04, Vector3.RIGHT, C.iron)
+	# under the head: its motor, and on the console's front a switch panel and an hour meter
+	cylinder("lobby", "projector motor", Vector3(px + 0.1, B + 0.75, 34.15), 0.11, 0.3, Vector3.RIGHT, cast)
+	block("lobby", "console switch panel", Vector3(px - 0.3, B + 0.93, 33.44), Vector3(px + 0.3, B + 0.985, 33.45), Color("202225"))
+	for i in 4:
+		block("lobby", "console switch", Vector3(px - 0.24 + i * 0.1, B + 0.945, 33.435), Vector3(px - 0.2 + i * 0.1, B + 0.97, 33.44), [Color("d7262e"), Color("33a852"), alu, alu][i])
+	block("lobby", "hour meter", Vector3(px + 0.18, B + 0.94, 33.435), Vector3(px + 0.27, B + 0.975, 33.44), Color("e6e2d6"))
+	# the lamp house: a door on its operating side, its handle, the sight glass with the arc behind it, a maker's plate
+	var lx := px - 0.24
+	block("lobby", "lamp house door", Vector3(lx - 0.012, B + 1.05, 33.53), Vector3(lx, B + 1.56, 34.03), Color("33363b"))
+	block("lobby", "lamp house handle", Vector3(lx - 0.04, B + 1.25, 33.6), Vector3(lx - 0.012, B + 1.37, 33.63), alu)
+	var glass := BoxMesh.new()
+	glass.size = Vector3(0.004, 0.06, 0.08)
+	glass.material = _glow(Color("ffb347"))
+	var g := _add("lobby", "lamp house sight glass", glass)
+	g.global_position = Vector3(lx - 0.014, B + 1.45, 33.85)
+	g.set_meta("glow", "booth")
+	block("lobby", "lamp house plate", Vector3(lx - 0.014, B + 1.12, 33.78), Vector3(lx - 0.012, B + 1.17, 33.96), alu)
+	# the platters: a lip round each; on the brain, its payout rollers
+	var pl := Vector3(-4.3, B, 31.9)
+	for i in 3:
+		var y: float = 0.55 + i * 0.4
+		var lip := TorusMesh.new()
+		lip.inner_radius = 0.66
+		lip.outer_radius = 0.69
+		lip.rings = 48
+		lip.ring_segments = 6
+		lip.material = _mat(alu)
+		var lm := _add("lobby", "platter lip", lip)
+		lm.global_transform = Transform3D(Basis.from_scale(Vector3(1.0, 1.6, 1.0)), pl + Vector3(0, y + 0.02, 0))
+	for k in 4:
+		var a := k * TAU / 4.0 + 0.4
+		cylinder("lobby", "payout roller", pl + Vector3(cos(a) * 0.09, 1.78, sin(a) * 0.09), 0.018, 0.14, Vector3.UP, alu)
+	# the sound rack: rails down its front with their screws, VU meters and knobs on its units
+	var rx: float = SHAFT.x0 - 0.62
+	for z: float in [32.17, 32.93]:
+		block("lobby", "rack rail", Vector3(rx - 0.016, B + 0.05, z - 0.02), Vector3(rx - 0.012, B + 1.85, z + 0.02), Color("6b6f75"))
+		for i in 6:
+			for yy: float in [0.04, 0.16]:
+				cylinder("lobby", "rack screw", Vector3(rx - 0.018, B + 0.2 + i * 0.26 + yy, z), 0.006, 0.004, Vector3.RIGHT, alu)
+	for i: int in [1, 3]:  # (two of the units: the processor and the amp, a pair of meters each)
+		var y: float = B + 0.2 + i * 0.26
+		for j in 2:
+			block("lobby", "vu meter", Vector3(rx - 0.016, y + 0.06, 32.5 + j * 0.16), Vector3(rx - 0.012, y + 0.15, 32.63 + j * 0.16), Color("e8dcae"))
+			bar("lobby", "vu needle", Vector3(rx - 0.017, y + 0.065, 32.565 + j * 0.16), Vector3(rx - 0.017, y + 0.13, 32.59 + j * 0.16), Vector2(0.002, 0.002), Color("1d1f22"))
+	for i: int in [0, 2, 4, 5]:
+		var y: float = B + 0.2 + i * 0.26
+		for j in 3:
+			cylinder("lobby", "rack knob", Vector3(rx - 0.025, y + 0.08, 32.55 + j * 0.1), 0.016, 0.022, Vector3.RIGHT, dark)
 
 
 const HALL := { "x": [2.0, 9.4], "z": [28.1, 29.7], "base": Color("2e2f31"), "door": Color("d4d6d8"), "trim": Color("bfc3c7"), "steel": Color("b8bcc0"), "cork": Color("b0875a"), "red": Color("c8102e") }

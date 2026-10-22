@@ -89,3 +89,18 @@ wall, a floor drain, the exhaust fan's grille in the ceiling.
 | ![](restroom/toilet_before.png) | ![](restroom/toilet_after.png) |
 | ![](restroom/back_before.png) | ![](restroom/back_after.png) |
 | ![](restroom/door_before.png) | ![](restroom/door_after.png) |
+
+## The projection booth (`booth`)
+
+Its machines less blocky. The projector's head given its operating side: a door with knobs and a window on the gate,
+the rollers and the film's loop down through them, a lens turret, the motor under it, a switch panel and hour meter on
+the console. The lamp house a door, its handle, a sight glass showing the arc, a maker's plate. The platters lipped, the
+brain's payout rollers. The sound rack's rails and screws, VU meters and knobs on its units.
+
+| Before | After |
+|---|---|
+| ![](booth/lamp_before.png) | ![](booth/lamp_after.png) |
+| ![](booth/platter_before.png) | ![](booth/platter_after.png) |
+| ![](booth/rack_before.png) | ![](booth/rack_after.png) |
+| ![](booth/in_before.png) | ![](booth/in_after.png) |
+| ![](booth/west_before.png) | ![](booth/west_after.png) |
