@@ -92,6 +92,8 @@ var _next_cover := 0
 var _gen := 0  # which stocking the cover workers are filling (a restock leaves the old ones to give up)
 var _shrinking := {}  # covers being loaded and shrunk (WorkerThreadPool tasks): seen through before the game closes
 
+var in_theater := false  # the tape went in the theater's VCR (cinema.gd's curtains stay open for it)
+@onready var cinema: Node = $"../Cinema"
 @onready var player: CharacterBody3D = $"../Player"
 @onready var cam: Camera3D = $"../Player/Camera"
 @onready var hud: CanvasLayer = $"../HUD"
@@ -136,6 +138,9 @@ func _ready() -> void:
 	_saver_build()
 	video.started.connect(_on_started)
 	video.ended.connect(func() -> void:
+		if cinema.busy:  # (an intro run out, not the tape)
+			cinema.next()
+			return
 		if playing != null:
 			Library.report(playing.tape.e[playing.idx][2], 0.0, true)  # (watched)
 			Library.played[playing.tape.e[playing.idx][2]] = true
@@ -143,7 +148,11 @@ func _ready() -> void:
 				playing.tape.seen = true
 				recover(playing.tape, false)  # (its sticker on, every copy's)
 		step_episode(1))
-	video.failed.connect(func(why: String) -> void: hud.toast("⚠ " + why))
+	video.failed.connect(func(why: String) -> void:
+		if cinema.busy:  # (an intro that wouldn't play: on to the next)
+			cinema.next()
+			return
+		hud.toast("⚠ " + why))
 	stock.call_deferred($"../Store")  # (once the store's built its shelves)
 
 
@@ -377,11 +386,11 @@ func _saver_tick(dt: float) -> void:
 		_logo.modulate = Color.WHITE.lerp(Color(DVD_TINTS[_dvd.tint]), 0.33)
 
 
-func _screens_show(tape: bool) -> void:  # the tape's picture, or back to the bouncing logo
+func _screens_show(tape: bool, tex: Texture2D = null) -> void:  # the tape's picture (or another: cinema.gd's cards), or back to the bouncing logo
 	_on_screens = tape
 	for q in _quads:
 		var m: ShaderMaterial = q.mesh.material
-		m.set_shader_parameter("uTex", video.texture if tape else _saver.get_texture())
+		m.set_shader_parameter("uTex", (tex if tex else video.texture) if tape else _saver.get_texture())
 		m.set_shader_parameter("uFx", 1.0 if tape else 0.0)  # (the logo as it is)
 		m.set_shader_parameter("uK", 0.85 if tape else 1.0)  # (the web game's -15%: blown-out whites were blinding)
 
@@ -952,13 +961,19 @@ func _show_box(t: Dictionary) -> void:
 
 # ---- the VCR
 
-func vcr_use() -> void:  # E on the screen: the tape in hand goes in, and the one that was in comes out into your hand
+func vcr_use() -> void:  # E on the screen: the tape in hand goes in, and the one that was in comes out into your hand. In the theater, a film from the top gets the works first (cinema.gd); E again skips them
+	if cinema.busy:
+		cinema.skip()
+		return
 	if held != null:
 		var tape: Dictionary = held
 		var old = playing.tape if playing != null else null
 		video.audio.position = Vector3(aim_tv.x, aim_tv.y, aim_tv.z)
 		_speaker(aim_tv.kind == "theater")
-		play_episode(tape.ep, tape)  # it plays from wherever it's wound to
+		if aim_tv.kind == "theater" and cinema.wants(tape):
+			cinema.begin(tape)
+		else:
+			play_episode(tape.ep, tape)  # it plays from wherever it's wound to
 		release()
 		if old != null:
 			if inv_make_room():
@@ -1071,4 +1086,5 @@ func eject() -> void:
 
 
 func _speaker(theater: bool) -> void:  # as VaultBusterGodot plays it: from the screen, the theater's speakers louder and further
+	in_theater = theater
 	video.audio.unit_size = 8.0 if theater else 4.8  # (a TV heard clear across its aisle. Kept: the resume file tells them apart by it, over 5 the theater)

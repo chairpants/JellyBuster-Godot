@@ -64,7 +64,7 @@ const SPILL := 0.55  # light through a doorway, for a fully lit room next to a d
 const SPILL_OUT := { "energy": 1.6, "range": 9.0 }  # the lit store's light out onto the sidewalk and the lot, at full dark
 const ZONE_K := { "closet": 0.8, "theater": 0.55, "booth": 0.4, "stairwell": 0.4 }  # how bright a room is with its light on, next to the rest (room.gd's shader)
 const ZONE_TINT := { "closet": Color(1.0, 0.85, 0.66), "booth": Color(1.0, 0.8, 0.58), "stairwell": Color(1.0, 0.8, 0.58), "lobby": Color(1.0, 0.86, 0.74), "theater": Color(1.0, 0.71, 0.48) }
-const HOUSE := { "preshow": 0.8, "low": 0.15, "fade": 3.0 }  # the theater between films: its house lights up this far whatever the switch says (the switch: all the way); with a film on, out, and the sconces and step lights down to low; fading over this many seconds
+const HOUSE := { "preshow": 0.8, "low": 0.15, "fade": 3.0, "up": 7.0 }  # the theater between films: its house lights up this far whatever the switch says (the switch: all the way); with a film on, out, and the sconces and step lights down to low; fading over this many seconds
 const STEP := { "color": Color(1.0, 0.62, 0.26), "energy": 0.35, "range": 1.6, "in": 0.25 }  # the aisles' step lights: low, amber, at each row's end (in: off the seats' edge, into the aisle)
 const PANEL_COLD := Color(0.188, 0.204, 0.239)  # 0x30343d: between stutters
 const PANEL_OFF := Color(0.051, 0.063, 0.086)  # 0x0d1016
@@ -627,8 +627,8 @@ func _process(dt: float) -> void:  # fluorescents restriking, tube by tube (ligh
 			n.light.light_color = Color(1.0, 0.302, 0.102).lerp(Color(1.0, 0.682, 0.29), k)  # 0xff4d1a to 0xffae4a
 	# the theater: with a film on its screen the lights go down, slowly; when it stops, or it's paused, they come back up. The step lights
 	# are on whatever the switch says (they're how you find your seat), faint while it plays
-	var showing: bool = not video.url.is_empty() and not video.paused and video.audio.unit_size > 5.0  # (the theater's speakers: tapes.gd's _speaker. Paused: they come up)
-	house = move_toward(house, 0.0 if showing else 1.0, dt / HOUSE.fade)
+	var showing: bool = not video.url.is_empty() and not video.paused and video.audio.unit_size > 5.0 or $"../Cinema".preshow  # (the theater's speakers: tapes.gd's _speaker. Paused: they come up. And down for the pre-show: cinema.gd)
+	house = move_toward(house, 0.0 if showing else 1.0, dt / (HOUSE.fade if showing else HOUSE.up))  # (back up slower than they went down)
 	var glow := lerpf(HOUSE.low, 1.0, house)  # (the sconces and the steps: never quite out)
 	preload("res://room.gd").glob("uThSconce", glow)
 	for sc: Array in _sconces:

@@ -385,6 +385,28 @@ func resume_at(id: String) -> float:  # where they left it, on the server (0: ne
 	return 0.0 if not r is Dictionary or r.get("Played", false) else r.get("PlaybackPositionTicks", 0) / 10000000.0
 
 
+func intros(id: String) -> Array:  # what the server plays before it (its Cinema Mode: trailers, pre-rolls), as item ids; [] if nothing, or in the demo
+	if demo or offline or user_id.is_empty():
+		return []
+	var r = await _fetch("/Items/%s/Intros?userId=%s" % [id, user_id])
+	return r.get("Items", []).map(func(it: Dictionary) -> String: return it.Id) if r is Dictionary else []
+
+
+func trailers(n: int, but: String) -> Array:  # trailers the server has for a few films picked at random (not that one), as item ids: up to n
+	if demo or offline or user_id.is_empty():
+		return []
+	var films := items.filter(func(t: Dictionary) -> bool: return t.kind == "movie" and t.id != but)
+	films.shuffle()
+	var out := []
+	for t: Dictionary in films.slice(0, 8):  # (most films have none: asked of a few)
+		var r = await _fetch("/Items/%s/LocalTrailers?userId=%s" % [t.id, user_id])
+		if r is Array and not r.is_empty():
+			out.append(r.pick_random().Id)
+			if out.size() >= n:
+				break
+	return out
+
+
 func report(id: String, at: float, played := false) -> void:  # how far they've got, onto the server: other Jellyfin apps pick it up from there
 	if demo or user_id.is_empty():
 		return

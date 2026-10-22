@@ -9,9 +9,10 @@ const ROWS := [  # [key, label, min, max, step] (no min: a toggle)
 	["bw", "B&W"], ["scanlines", "SCANLINES"], ["pixelated", "PIXELATED"],
 	["#", "GRAPHICS"], ["fancy", "LIGHTING FX"], ["smooth", "SMOOTH EDGES"], ["scale", "RENDER %", 50, 100, 5],  # (the game's, not the TV's: room.gd's fancy(); MSAA or, off, FXAA; under 100, FSR up to the window)
 	["full", "FULL SCREEN"],  # (F11 too)
+	["#", "THEATER"], ["preshow", "PRE-SHOW"],  # (cinema.gd: a film from the top in the theater gets the works first)
 	["#", "CONTROLS"], ["fov", "FIELD OF VIEW", 55, 100, 5], ["mouse", "MOUSE %", 25, 300, 5], ["invert", "INVERT Y"],
 ]
-const DEFAULTS := { "brightness": 100, "contrast": 100, "saturate": 100, "hue": 0, "sharpen": 0, "volume": 100, "bw": false, "scanlines": false, "pixelated": false, "fancy": true, "smooth": true, "scale": 100, "full": false, "fov": 60, "mouse": 100, "invert": false }
+const DEFAULTS := { "brightness": 100, "contrast": 100, "saturate": 100, "hue": 0, "sharpen": 0, "volume": 100, "bw": false, "scanlines": false, "pixelated": false, "fancy": true, "smooth": true, "scale": 100, "full": false, "fov": 60, "mouse": 100, "invert": false, "preshow": true }
 const FILE := "user://picture.cfg"
 const PIC := """
 uniform float uFx = 1.0; uniform float uK = 1.0;
