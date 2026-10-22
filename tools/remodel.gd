@@ -49,6 +49,8 @@ extends SceneTree
 ## foyer: the theater's lobby as a cinema's: wainscot below a gold chair rail round its bare walls, deco sconces either
 ##   side of the way in, a padded bench between them; the concession counter (a plain box) a front of raised panels and a
 ##   gold band, its top overhanging; a popcorn machine on it, a soda fountain beside its candy case
+## auditorium: the auditorium's black void over its wall panels filled: a gold cap rail along the panels' tops, the
+##   surround speakers up the side walls (cabinets angled down, their grilles), and a ceiling of pin lights, one mesh
 ## restroom: the floors either side of the wall between the restroom and the break room meeting under it, square (boh
 ##   moved that wall over, but only the floors' far corners with it: a wedge of the break room's floor in the restroom).
 ##
@@ -148,6 +150,12 @@ func _init() -> void:
 				quit(1)
 				return
 			_foyer()
+		"auditorium":
+			if not "theater" in done:
+				push_error("remodel: auditorium goes after theater")
+				quit(1)
+				return
+			_auditorium()
 		"railings":
 			if not "theater" in done:
 				push_error("remodel: railings go after theater")
@@ -180,7 +188,7 @@ func _init() -> void:
 	var err := packed.pack(w)
 	if err == OK:
 		err = ResourceSaver.save(packed, WORLD, ResourceSaver.FLAG_COMPRESS)  # (as it came: compressed)
-	if not section in ["strip", "restroom", "railings", "hall", "roof", "closet", "stairwell", "breakroom", "aisles", "lavatory", "booth", "outside", "foyer"]:  # (the level only: the data's as it was)
+	if not section in ["strip", "restroom", "railings", "hall", "roof", "closet", "stairwell", "breakroom", "aisles", "lavatory", "booth", "outside", "foyer", "auditorium"]:  # (the level only: the data's as it was)
 		var f := FileAccess.open(DATA, FileAccess.WRITE)
 		f.store_string(_json(data))
 		f.close()
@@ -783,6 +791,50 @@ func _foyer() -> void:
 	block("lobby", "drip tray", sf + Vector3(-0.24, 0.0, 0.1), sf + Vector3(0.24, 0.03, 0.26), Color("8d9196"))
 	for k in 3:
 		cylinder("lobby", "cup stack", sf + Vector3(0.36, 0.12 + k * 0.0, -0.05 + k * 0.1), 0.045, 0.24, Vector3.UP, Color("f4f1e8"))
+
+
+func _auditorium() -> void:
+	var walls := [[-7.64, 1.0], [1.9, -1.0]]  # each side wall's face, and which way is in
+	var gold := Color("b8902a")
+	for wl: Array in walls:
+		var x: float = wl[0]
+		var inn: float = wl[1]
+		block("theater", "cap rail", Vector3(minf(x, x + inn * 0.06), 3.0, 35.3), Vector3(maxf(x, x + inn * 0.06), 3.08, 47.5), gold)
+		for z: float in [37.0, 40.4, 43.8]:  # the surrounds: a cabinet off a bracket, angled down at the seats
+			var c := Vector3(x + inn * 0.24, 3.75, z)
+			var tilt := Basis(Vector3.UP, inn * PI / 2.0) * Basis(Vector3.RIGHT, -0.35)
+			var cab := BoxMesh.new()
+			cab.size = Vector3(0.36, 0.52, 0.26)
+			var m := _add("theater", "surround speaker", cab)
+			m.global_transform = Transform3D(tilt, c)
+			m.mesh.surface_set_material(0, _mat(Color("15161a")))
+			var grille := BoxMesh.new()
+			grille.size = Vector3(0.32, 0.46, 0.005)
+			var g := _add("theater", "speaker grille", grille)
+			g.global_transform = Transform3D(tilt, c + tilt * Vector3(0, 0, 0.132))
+			g.mesh.surface_set_material(0, _mat(Color("2a2b30")))
+			bar("theater", "speaker bracket", Vector3(x, 3.75, z), c - tilt * Vector3(0, 0, 0.13), Vector2(0.04, 0.04), C.iron)
+	# the ceiling's pin lights: one mesh, a scatter of small lit squares, kept off the booth's port and the screen's beam
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 1977
+	var n := 0
+	while n < 140:
+		var p := Vector3(rng.randf_range(-7.4, 1.6), CEIL - 0.006, rng.randf_range(35.6, 47.2))
+		if absf(p.x + 1.42) < 0.9 and p.z < 40.0:
+			continue  # (clear of the beam, where it leaves the port)
+		var b := BoxMesh.new()
+		b.size = Vector3(0.025, 0.006, 0.025)
+		st.append_from(b, 0, Transform3D(Basis.IDENTITY, p))
+		n += 1
+	var lights := MeshInstance3D.new()
+	lights.mesh = st.commit()
+	lights.mesh.surface_set_material(0, _glow(Color("fff2cc")))
+	lights.name = "ceiling pin lights"
+	_node("theater").add_child(lights, true)
+	lights.owner = w
+	lights.set_meta("glow", "theater")
 
 
 const HALL := { "x": [2.0, 9.4], "z": [28.1, 29.7], "base": Color("2e2f31"), "door": Color("d4d6d8"), "trim": Color("bfc3c7"), "steel": Color("b8bcc0"), "cork": Color("b0875a"), "red": Color("c8102e") }

@@ -132,3 +132,14 @@ a gold band and a top that overhangs; a popcorn machine on it, and a soda founta
 | ![](lobby/counter_before.png) | ![](lobby/counter_after.png) |
 | ![](lobby/in_before.png) | ![](lobby/in_after.png) |
 | ![](lobby/back_before.png) | ![](lobby/back_after.png) |
+
+## The auditorium (`auditorium`)
+
+The black void over its wall panels filled: a gold rail along the side walls, the surround speakers up them (cabinets
+on brackets, angled down at the seats, their grilles), and a ceiling of pin lights (one mesh, on the theater's switch).
+
+| Before | After |
+|---|---|
+| ![](theater/back_before.png) | ![](theater/back_after.png) |
+| ![](theater/wall_before.png) | ![](theater/wall_after.png) |
+| ![](theater/rear_before.png) | ![](theater/rear_after.png) |
