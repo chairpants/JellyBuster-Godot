@@ -46,6 +46,9 @@ extends SceneTree
 ##   electric meters and their disconnect with the conduit up to the roof, the gas meter on its riser, a hose bib, wall
 ##   packs; the dumpster on a concrete pad behind two bollards. On the theater's back, its emergency exit (a steel door
 ##   in its frame, no handle this side, a stoop under it, a lit EXIT over it, a wall pack), a louvre up high
+## foyer: the theater's lobby as a cinema's: wainscot below a gold chair rail round its bare walls, deco sconces either
+##   side of the way in, a padded bench between them; the concession counter (a plain box) a front of raised panels and a
+##   gold band, its top overhanging; a popcorn machine on it, a soda fountain beside its candy case
 ## restroom: the floors either side of the wall between the restroom and the break room meeting under it, square (boh
 ##   moved that wall over, but only the floors' far corners with it: a wedge of the break room's floor in the restroom).
 ##
@@ -139,6 +142,12 @@ func _init() -> void:
 				quit(1)
 				return
 			_outside()
+		"foyer":
+			if not "theater" in done:
+				push_error("remodel: foyer goes after theater")
+				quit(1)
+				return
+			_foyer()
 		"railings":
 			if not "theater" in done:
 				push_error("remodel: railings go after theater")
@@ -171,7 +180,7 @@ func _init() -> void:
 	var err := packed.pack(w)
 	if err == OK:
 		err = ResourceSaver.save(packed, WORLD, ResourceSaver.FLAG_COMPRESS)  # (as it came: compressed)
-	if not section in ["strip", "restroom", "railings", "hall", "roof", "closet", "stairwell", "breakroom", "aisles", "lavatory", "booth", "outside"]:  # (the level only: the data's as it was)
+	if not section in ["strip", "restroom", "railings", "hall", "roof", "closet", "stairwell", "breakroom", "aisles", "lavatory", "booth", "outside", "foyer"]:  # (the level only: the data's as it was)
 		var f := FileAccess.open(DATA, FileAccess.WRITE)
 		f.store_string(_json(data))
 		f.close()
@@ -693,6 +702,89 @@ func _outside() -> void:
 		block("out", "louvre blade", Vector3(-5.56, 4.66 + k * 0.09, zr + 0.06), Vector3(-4.64, 4.69 + k * 0.09, zr + 0.09), dark)
 
 
+func _foyer() -> void:
+	var red := Color("5e1418")
+	var gold := Color("c9a227")
+	var xw := -7.64  # the west wall's face; the back wall's (the theater's door in it, from DOOR_X0); the stairwell's side
+	var zb := 34.9
+	var xs: float = SHAFT.x0 - 0.01
+	# wainscot: dark red to 0.9 m, a gold rail along its top, round the walls that are bare
+	for r: Array in [[Vector3(xw, 0, 30.55), Vector3(xw + 0.012, 0.9, zb), Vector3.RIGHT], [Vector3(-6.25, 0, zb - 0.012), Vector3(xs, 0.9, zb), Vector3.FORWARD],
+			[Vector3(xs - 0.012, 0, SHAFT.top - 1.1), Vector3(xs, 0.9, zb), Vector3.LEFT]]:
+		var a: Vector3 = r[0]
+		var b: Vector3 = r[1]
+		var n: Vector3 = r[2]
+		block("lobby", "wainscot", a, b, red)
+		var ra := Vector3(a.x, 0.9, a.z)
+		var rb := Vector3(b.x, 0.94, b.z)
+		block("lobby", "chair rail", ra.min(rb) + Vector3(minf(0, n.x), 0, minf(0, n.z)) * 0.02, ra.max(rb) + Vector3(maxf(0, n.x), 0, maxf(0, n.z)) * 0.02, gold)
+		var ba := Vector3(a.x, 0.0, a.z)
+		var bb := Vector3(b.x, 0.08, b.z)
+		block("lobby", "lobby base", ba.min(bb) + Vector3(minf(0, n.x), 0, minf(0, n.z)) * 0.01, ba.max(bb) + Vector3(maxf(0, n.x), 0, maxf(0, n.z)) * 0.01, Color("2a0b0d"))
+	# deco sconces either side of the way in (on the back wall), a bench between them
+	for x: float in [-5.2, -1.9]:
+		block("lobby", "sconce plate", Vector3(x - 0.09, 1.75, zb - 0.02), Vector3(x + 0.09, 2.15, zb), gold)
+		var shade := CylinderMesh.new()
+		shade.top_radius = 0.16
+		shade.bottom_radius = 0.05
+		shade.height = 0.22
+		shade.radial_segments = 6
+		shade.material = _glow(Color("ffd9a0"))
+		var sm := _add("lobby", "sconce shade", shade)
+		sm.global_position = Vector3(x, 2.02, zb - 0.12)
+		sm.set_meta("glow", "lobby")
+		bar("lobby", "sconce arm", Vector3(x, 1.92, zb - 0.02), Vector3(x, 1.92, zb - 0.12), Vector2(0.025, 0.025), gold)
+	var bz := zb - 0.45
+	block("lobby", "bench seat", Vector3(-3.55, 0.38, bz - 0.2), Vector3(-2.05, 0.48, bz + 0.2), Color("7a1c22"))
+	block("lobby", "bench back", Vector3(-3.55, 0.48, bz + 0.17), Vector3(-2.05, 0.9, bz + 0.27), Color("7a1c22"))
+	for x: float in [-3.45, -2.15]:  # (clear of the ropes put by along the wall)
+		for z: float in [bz - 0.15, bz + 0.15]:
+			block("lobby", "bench leg", Vector3(x - 0.02, 0, z - 0.02), Vector3(x + 0.02, 0.38, z + 0.02), gold)
+	# the counter (x -7.54 to -4.5, its front to the room at z 30.51, 0.96 high): a front of panels, a gold band, a top that overhangs
+	var cx := [-7.54, -4.5]
+	var zf := 30.51
+	block("lobby", "counter top", Vector3(cx[0] - 0.03, 0.96, 29.86), Vector3(cx[1] + 0.03, 1.0, zf + 0.05), Color("2b1d14"))
+	block("lobby", "counter band", Vector3(cx[0], 0.82, zf), Vector3(cx[1], 0.9, zf + 0.012), gold)
+	block("lobby", "counter kick", Vector3(cx[0], 0.0, zf), Vector3(cx[1], 0.1, zf + 0.012), Color("1d0a0b"))
+	for k in 4:
+		var x0: float = cx[0] + 0.1 + k * 0.74
+		block("lobby", "counter panel", Vector3(x0, 0.18, zf), Vector3(x0 + 0.62, 0.74, zf + 0.02), Color("8a1f26"))
+		block("lobby", "counter panel trim", Vector3(x0 + 0.04, 0.22, zf + 0.02), Vector3(x0 + 0.58, 0.7, zf + 0.025), Color("6d171c"))
+	# the popcorn machine at its west end: a red cart top, a glass case, the kettle hanging in it, popcorn heaped, a sign on its roof
+	var pc := Vector3(-7.05, 1.0, 30.2)
+	block("lobby", "popcorn base", pc + Vector3(-0.28, 0, -0.22), pc + Vector3(0.28, 0.1, 0.22), Color("c8102e"))
+	for e: Array in [[-0.28, -0.22], [0.26, -0.22], [-0.28, 0.2], [0.26, 0.2]]:
+		block("lobby", "popcorn post", pc + Vector3(e[0], 0.1, e[1]), pc + Vector3(e[0] + 0.02, 0.62, e[1] + 0.02), Color("c8102e"))
+	var glass := StandardMaterial3D.new()
+	glass.albedo_color = Color(0.85, 0.92, 0.95, 0.18)
+	glass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	var gb := BoxMesh.new()
+	gb.size = Vector3(0.52, 0.5, 0.4)
+	gb.material = glass
+	_add("lobby", "popcorn glass", gb).global_position = pc + Vector3(0, 0.36, 0)
+	block("lobby", "popcorn heap", pc + Vector3(-0.25, 0.1, -0.18), pc + Vector3(0.25, 0.22, 0.18), Color("f3d46b"))
+	cylinder("lobby", "popcorn kettle", pc + Vector3(0, 0.46, 0), 0.1, 0.1, Vector3.UP, Color("b8bcc2"))
+	bar("lobby", "kettle rod", pc + Vector3(0, 0.51, 0), pc + Vector3(0, 0.62, 0), Vector2(0.015, 0.015), Color("b8bcc2"))
+	block("lobby", "popcorn roof", pc + Vector3(-0.3, 0.62, -0.24), pc + Vector3(0.3, 0.7, 0.24), Color("c8102e"))
+	var sign := QuadMesh.new()
+	sign.size = Vector2(0.5, 0.1)
+	var lab := StandardMaterial3D.new()
+	lab.albedo_texture = ImageTexture.create_from_image(_lettering("POPCORN", Color("f2c200"), Color("c8102e")))
+	sign.material = lab
+	var smi := _add("lobby", "popcorn sign", sign)
+	smi.global_transform = Transform3D(Basis.IDENTITY, pc + Vector3(0, 0.76, 0.0))
+	block("lobby", "popcorn sign back", pc + Vector3(-0.26, 0.7, -0.012), pc + Vector3(0.26, 0.82, -0.002), Color("c8102e"))
+	# the soda fountain at its east end: its tower, four nozzles, a drip tray, cups stacked
+	var sf := Vector3(-4.85, 1.0, 30.05)
+	block("lobby", "soda tower", sf + Vector3(-0.25, 0, -0.15), sf + Vector3(0.25, 0.55, 0.12), Color("d9dcdf"))
+	block("lobby", "soda panel", sf + Vector3(-0.23, 0.3, 0.12), sf + Vector3(0.23, 0.52, 0.125), Color("1c4dbb"))
+	for k in 4:
+		block("lobby", "soda nozzle", sf + Vector3(-0.18 + k * 0.12, 0.22, 0.12), sf + Vector3(-0.15 + k * 0.12, 0.29, 0.18), Color("2b2d30"))
+	block("lobby", "drip tray", sf + Vector3(-0.24, 0.0, 0.1), sf + Vector3(0.24, 0.03, 0.26), Color("8d9196"))
+	for k in 3:
+		cylinder("lobby", "cup stack", sf + Vector3(0.36, 0.12 + k * 0.0, -0.05 + k * 0.1), 0.045, 0.24, Vector3.UP, Color("f4f1e8"))
+
+
 const HALL := { "x": [2.0, 9.4], "z": [28.1, 29.7], "base": Color("2e2f31"), "door": Color("d4d6d8"), "trim": Color("bfc3c7"), "steel": Color("b8bcc0"), "cork": Color("b0875a"), "red": Color("c8102e") }
 
 
@@ -766,6 +858,7 @@ static func _lettering(text: String, ink: Color, paper: Color) -> Image:  # capi
 		"M": ["10001", "11011", "10101", "10101", "10001", "10001", "10001"], "S": ["01111", "10000", "10000", "01110", "00001", "00001", "11110"], "D": ["11110", "10001", "10001", "10001", "10001", "10001", "11110"],
 		"B": ["11110", "10001", "10001", "11110", "10001", "10001", "11110"], "O": ["01110", "10001", "10001", "10001", "10001", "10001", "01110"], "H": ["10001", "10001", "10001", "11111", "10001", "10001", "10001"],
 		">": ["01000", "00100", "00010", "00001", "00010", "00100", "01000"],
+		"P": ["11110", "10001", "10001", "11110", "10000", "10000", "10000"], "C": ["01111", "10000", "10000", "10000", "10000", "10000", "01111"], "R": ["11110", "10001", "10001", "11110", "10100", "10010", "10001"],
 		"W": ["10001", "10001", "10001", "10101", "10101", "11011", "10001"], "A": ["01110", "10001", "10001", "11111", "10001", "10001", "10001"], "N": ["10001", "11001", "10101", "10011", "10001", "10001", "10001"] }
 	const PX := 8
 	var w := text.length() * 6 * PX + 2 * PX

@@ -120,3 +120,15 @@ stoop, a lit EXIT over it, a wall pack), and a louvre up high.
 | ![](outside/exit_before.png) | ![](outside/exit_after.png) |
 | ![](outside/front_before.png) | ![](outside/front_after.png) |
 | ![](outside/night_before.png) | ![](outside/night_after.png) |
+
+## The theater's lobby (`foyer`)
+
+Its bare walls a cinema's: dark red wainscot under a gold chair rail, deco sconces either side of the way in, a padded
+bench between them (clear of the ropes put by). The concession counter, a plain box, given a front of raised panels and
+a gold band and a top that overhangs; a popcorn machine on it, and a soda fountain beside the candy case.
+
+| Before | After |
+|---|---|
+| ![](lobby/counter_before.png) | ![](lobby/counter_after.png) |
+| ![](lobby/in_before.png) | ![](lobby/in_after.png) |
+| ![](lobby/back_before.png) | ![](lobby/back_after.png) |
