@@ -92,6 +92,8 @@ var _next_cover := 0
 var _gen := 0  # which stocking the cover workers are filling (a restock leaves the old ones to give up)
 var _shrinking := {}  # covers being loaded and shrunk (WorkerThreadPool tasks): seen through before the game closes
 
+var _looks := Vector3.ZERO  # paused, winding, cue: as the screens last had them
+const REEL := 1200.0  # seconds to a reel, for the theater's cue dots
 var in_theater := false  # the tape went in the theater's VCR (cinema.gd's curtains stay open for it)
 @onready var cinema: Node = $"../Cinema"
 @onready var player: CharacterBody3D = $"../Player"
@@ -224,6 +226,7 @@ func stock(store: Node) -> void:  # the store's tapes onto its shelves (store.gd
 		var quad := QuadMesh.new()
 		quad.size = Vector2(sc.w, sc.h) * (THEATER_GROW if sc.get("kind") == "theater" else 1.0)
 		quad.material = $"../Picture".material(true)  # (the picture menu's brightness and the rest)
+		quad.material.set_shader_parameter("uLook", 2.0 if sc.get("kind") == "theater" else 1.0)  # (film in the theater; a tape on a TV everywhere else: picture.gd)
 		q.mesh = quad
 		if sc.has("q"):
 			q.basis = Basis(Quaternion(sc.q[0], sc.q[1], sc.q[2], sc.q[3]))
@@ -393,6 +396,24 @@ func _screens_show(tape: bool, tex: Texture2D = null) -> void:  # the tape's pic
 		m.set_shader_parameter("uTex", (tex if tex else video.texture) if tape else _saver.get_texture())
 		m.set_shader_parameter("uFx", 1.0 if tape else 0.0)  # (the logo as it is)
 		m.set_shader_parameter("uK", 0.85 if tape else 1.0)  # (the web game's -15%: blown-out whites were blinding)
+
+
+func _looks_tick() -> void:  # what the screens' looks need to know (picture.gd): paused, winding, a cue dot before the reel runs out. Only when it changes
+	var cue := 0.0
+	var d: float = playing.tape.e[playing.idx][3] if playing != null and playing.tape.e[playing.idx].size() > 3 else 0.0
+	if d > 0.0 and not video.paused:  # (a reel's twenty minutes: dots 8 s and 1 s before each change, four frames each, as a projectionist's cue marks)
+		var left: float = REEL - fmod(video.position, REEL)
+		if video.position + left < d - 30.0 and (absf(left - 8.0) < 0.085 or absf(left - 1.0) < 0.085):
+			cue = 1.0
+	var now := Vector3(1.0 if video.paused and playing != null else 0.0, _scrub.dir if _scrub.to >= 0.0 else 0.0, cue)
+	if now == _looks:
+		return
+	_looks = now
+	for q in _quads:
+		var m: ShaderMaterial = q.mesh.material
+		m.set_shader_parameter("uPaused", now.x)
+		m.set_shader_parameter("uScrub", now.y)
+		m.set_shader_parameter("uCue", now.z)
 
 
 func _cell(p: Vector3) -> Vector3i:
@@ -691,6 +712,7 @@ func put_back() -> void:  # back into its own shelf slot
 
 func _process(dt: float) -> void:
 	_saver_tick(dt)
+	_looks_tick()
 	_sharp_tick(dt)
 	_focus.dof_blur_amount = move_toward(_focus.dof_blur_amount, FOCUS_BLUR if held != null and inspecting else 0.0, dt * FOCUS_BLUR * 4.0)
 	_focus.dof_blur_far_enabled = _focus.dof_blur_amount > 0.0

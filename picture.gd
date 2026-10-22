@@ -6,18 +6,23 @@ extends CanvasLayer
 const ROWS := [  # [key, label, min, max, step] (no min: a toggle)
 	["brightness", "BRIGHTNESS", 50, 150, 5], ["contrast", "CONTRAST", 50, 150, 5], ["saturate", "COLOR", 0, 200, 5],
 	["hue", "TINT", 0, 360, 10], ["sharpen", "SHARPEN", 0, 100, 5], ["volume", "VOLUME", 0, 200, 5],
-	["bw", "B&W"], ["scanlines", "SCANLINES"], ["pixelated", "PIXELATED"],
+	["bw", "B&W"], ["scanlines", "SCANLINES"], ["pixelated", "PIXELATED"], ["looks", "SCREEN LOOKS"],  # (a tape on a TV, film in the theater)
 	["#", "GRAPHICS"], ["fancy", "LIGHTING FX"], ["smooth", "SMOOTH EDGES"], ["scale", "RENDER %", 50, 100, 5],  # (the game's, not the TV's: room.gd's fancy(); MSAA or, off, FXAA; under 100, FSR up to the window)
 	["full", "FULL SCREEN"],  # (F11 too)
 	["#", "THEATER"], ["preshow", "PRE-SHOW"],  # (cinema.gd: a film from the top in the theater gets the works first)
 	["#", "CONTROLS"], ["fov", "FIELD OF VIEW", 55, 100, 5], ["mouse", "MOUSE %", 25, 300, 5], ["invert", "INVERT Y"],
 ]
-const DEFAULTS := { "brightness": 100, "contrast": 100, "saturate": 100, "hue": 0, "sharpen": 0, "volume": 100, "bw": false, "scanlines": false, "pixelated": false, "fancy": true, "smooth": true, "scale": 100, "full": false, "fov": 60, "mouse": 100, "invert": false, "preshow": true }
+const DEFAULTS := { "brightness": 100, "contrast": 100, "saturate": 100, "hue": 0, "sharpen": 0, "volume": 100, "bw": false, "scanlines": false, "pixelated": false, "fancy": true, "smooth": true, "scale": 100, "full": false, "fov": 60, "mouse": 100, "invert": false, "preshow": true, "looks": true }
 const FILE := "user://picture.cfg"
 const PIC := """
 uniform float uFx = 1.0; uniform float uK = 1.0;
 uniform float uBright = 1.0; uniform float uContrast = 1.0; uniform float uSat = 1.0; uniform float uHue = 0.0;
 uniform float uSharp = 0.0; uniform float uScan = 0.0; uniform float uPix = 0.0;
+uniform float uLook = 0.0;     // what the screen is: 0 just the picture; 1 a TV, a tape on it (tracking, colour bleed, the pause's shake, picture search); 2 the theater's, film (grain, weave, a vignette, cue dots)
+uniform float uLooks = 1.0;    // the picture menu's SCREEN LOOKS
+uniform float uPaused = 0.0; uniform float uScrub = 0.0; uniform float uCue = 0.0;   // (tapes.gd: paused; winding, -1..1; a cue dot up, 0..1)
+
+float h21(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 
 vec3 cubic(sampler2D t, vec2 uv, vec2 sz) {   // Catmull-Rom, in nine bilinear taps: crisper than bilinear where the picture's blown up (close, zoomed, full screen)
 	vec2 tc = floor(uv * sz - 0.5) + 0.5;
@@ -57,8 +62,36 @@ vec3 look(sampler2D t, vec2 uv, vec2 sz) {   // the picture at uv: blown up, cub
 vec3 pic(sampler2D t, vec2 uv) {   // as the web game's CSS filters: in sRGB, brightness, contrast, saturate, hue-rotate, then an unsharp mask
 	vec2 sz = vec2(textureSize(t, 0));
 	if (uFx < 0.5) return texture(t, uv).rgb * uK;
+	float vhs = uLook > 0.5 && uLook < 1.5 ? uLooks : 0.0;
+	float film = uLook > 1.5 ? uLooks : 0.0;
+	float fr = floor(TIME * 24.0);   // (a frame's worth of time: grain and weave change a frame at a time)
+	float band = 0.0;   // (VHS: how much of a noise bar this line's in)
+	if (vhs > 0.0) {
+		uv.x += 0.0007 * sin(uv.y * 9.0 + TIME * 1.7) + 0.0004 * sin(uv.y * 41.0 - TIME * 3.3);   // tracking, never quite still
+		float head = smoothstep(0.035, 0.0, 1.0 - uv.y);   // the head switch, along the bottom
+		uv.x += head * (0.012 + 0.01 * h21(vec2(floor(uv.y * 240.0), fr)));
+		band = head * 0.6;
+		if (uPaused > 0.5) {   // the pause: the frame shakes up and down, a bar of noise sits across it
+			uv.y += (h21(vec2(fr, 3.0)) - 0.5) * 0.006;
+			band = max(band, smoothstep(0.03, 0.0, abs(uv.y - 0.78)));
+		}
+		if (abs(uScrub) > 0.0) {   // picture search: bars of noise rolling through, the way it's winding
+			for (int i = 0; i < 3; i++) {
+				float y = fract(float(i) / 3.0 + TIME * 0.9 * sign(uScrub));
+				band = max(band, smoothstep(0.035, 0.0, abs(uv.y - y)));
+			}
+			uv.x += band * 0.03;
+		}
+	}
+	if (film > 0.0) uv += vec2(sin(fr * 0.71) * 0.0006 + sin(fr * 1.93) * 0.0003, sin(fr * 0.57) * 0.0005) * film;   // gate weave
 	if (uPix > 0.5) uv = (floor(uv * sz) + 0.5) / sz;
 	vec3 c = uPix > 0.5 ? texture(t, uv).rgb : look(t, uv, sz);
+	if (vhs > 0.0) {   // the colour smeared off to the right of what it belongs to; the blacks a little lifted
+		c.r = mix(c.r, texture(t, uv - vec2(2.5 / sz.x, 0.0)).r, 0.6 * vhs);
+		c.b = mix(c.b, texture(t, uv - vec2(3.5 / sz.x, 0.0)).b, 0.5 * vhs);
+		c = mix(c, vec3(h21(uv * sz + fr)), band * vhs);
+		c = c * 0.94 + 0.03;
+	}
 	if (uSharp > 0.0) {
 		vec2 px = 1.0 / sz;
 		vec3 n = texture(t, uv + vec2(px.x, 0)).rgb + texture(t, uv - vec2(px.x, 0)).rgb + texture(t, uv + vec2(0, px.y)).rgb + texture(t, uv - vec2(0, px.y)).rgb;
@@ -69,6 +102,14 @@ vec3 pic(sampler2D t, vec2 uv) {   // as the web game's CSS filters: in sRGB, br
 	vec3 k = vec3(0.57735);   // the hue, turned round grey
 	c = c * cos(uHue) + cross(k, c) * sin(uHue) + k * dot(k, c) * (1.0 - cos(uHue));
 	if (uScan > 0.5) c *= mod(floor(uv.y * 240.0), 2.0) < 1.0 ? vec3(1.035) : vec3(0.66, 0.67, 0.7);
+	if (film > 0.0) {   // grain (most in the mids), the corners down, and a cue dot top right before the reel runs out
+		float lum = dot(c, vec3(0.299, 0.587, 0.114));
+		c += (h21(floor(uv * sz * 0.75) + fr * 17.0) - 0.5) * 0.06 * (1.0 - abs(lum - 0.5) * 1.2) * film;
+		vec2 q = uv - 0.5;
+		c *= 1.0 - 0.22 * film * pow(length(q * vec2(1.0, 1.5)) * 1.25, 2.4);
+		float d = length((uv - vec2(0.915, 0.09)) * vec2(sz.x / sz.y, 1.0));
+		c = mix(c, vec3(0.92, 0.9, 0.85), uCue * film * (1.0 - smoothstep(0.022, 0.028, d)) * (0.6 + 0.4 * smoothstep(0.0, 0.02, d)));
+	}
 	return clamp(c, 0.0, 1.0) * uK;
 }
 """
@@ -212,6 +253,7 @@ func _apply() -> void:
 		m.set_shader_parameter("uSharp", tv.sharpen / 100.0 * 1.5)
 		m.set_shader_parameter("uScan", 1.0 if tv.scanlines else 0.0)
 		m.set_shader_parameter("uPix", 1.0 if tv.pixelated else 0.0)
+		m.set_shader_parameter("uLooks", 1.0 if tv.looks else 0.0)
 	# the Film bus's fader, not the player's volume (the player's is capped by its max_db, so up close 200 did nothing)
 	AudioServer.set_bus_volume_db(AudioServer.get_bus_index("Film"), 10.0 * log(maxf(tv.volume, 1.0) / 100.0) / log(2.0))  # (as loud as it sounds: twice as loud, +10 dB, at 200; half, -10, at 50)
 
