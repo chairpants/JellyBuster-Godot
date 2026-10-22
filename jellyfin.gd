@@ -24,6 +24,9 @@ var offline := false  # opened on the library as it was last time (CACHE): nothi
 var items: Array = []  # a tape each: { id, cover (item ids to try for its picture), t, sort, c (section), kind (movie / series), year, added (when it came to the server), seen, e (episodes, as video.gd plays them) }
 var played := {}  # item id -> true: the movies and episodes watched to the end, as whoever's watching (seen on the shelf: tapes.gd's sticker)
 var plan := {}  # where everything goes (store.gd plan())
+var _resume_ids: Array = []  # what they're part way through, on the server (movies and episodes), most recent first
+var _liked := ""  # the last film they watched to the end (its id)
+var _similar_ids: Array = []  # what the server thinks is like it
 var _first := 0  # a box's back being fetched: the shelf's covers wait for it (the one you're looking at goes first)
 
 
@@ -79,6 +82,7 @@ func _start(ask: bool) -> void:  # (on the loading screen) connect, asking for t
 			for it: Dictionary in seen.Items if seen is Dictionary else []:
 				played[it.Id] = true
 			mark_seen()
+			await _fetch_picks()
 			var f := FileAccess.open(CACHE, FileAccess.WRITE)
 			f.store_string(JSON.stringify({ "shows": shows.Items, "eps": eps.Items, "played": played.keys(), "when": Time.get_datetime_string_from_system() }))
 			f.close()
@@ -116,6 +120,50 @@ func _demo(n: int) -> void:
 	mark_seen()
 	status = "Demo library: %d tapes" % items.size()
 	_open()
+
+
+func _fetch_picks() -> void:  # for the display by the counter (picks()): what they're part way through, the last film they finished and what's like it
+	_resume_ids = []
+	_liked = ""
+	_similar_ids = []
+	if user_id.is_empty():
+		return
+	var r = await _fetch("/UserItems/Resume?userId=%s&IncludeItemTypes=Movie,Episode&Limit=24&EnableImages=false&EnableUserData=false" % user_id)
+	_resume_ids = r.get("Items", []).map(func(it: Dictionary) -> String: return it.Id) if r is Dictionary else []
+	var last = await _fetch("/Items?userId=%s&Recursive=true&IncludeItemTypes=Movie&Filters=IsPlayed&SortBy=DatePlayed&SortOrder=Descending&Limit=1&EnableImages=false" % user_id)
+	if last is Dictionary and not last.get("Items", []).is_empty():
+		_liked = last.Items[0].Id
+		var sim = await _fetch("/Items/%s/Similar?userId=%s&Limit=24" % [_liked, user_id])
+		_similar_ids = sim.get("Items", []).map(func(it: Dictionary) -> String: return it.Id) if sim is Dictionary else []
+
+
+func picks() -> Dictionary:  # the display by the counter (store.gd): { going (part way through), added (newest), liked (a film's title), like (like it), blind (unseen films, to take a chance on) }, tapes each
+	var by_id := {}  # a movie's id, and every episode's, -> its tape
+	for t: Dictionary in items:
+		by_id[t.id] = t
+		for ep: Array in t.e:
+			by_id[ep[2]] = t
+	var movies := items.filter(func(t: Dictionary) -> bool: return t.kind == "movie")
+	var going := []
+	for id: String in _resume_ids:
+		if by_id.has(id) and not by_id[id] in going:
+			going.append(by_id[id])
+	var liked: Dictionary = by_id.get(_liked, {})
+	var like := []
+	for id: String in _similar_ids:
+		if by_id.has(id) and not by_id[id] in like:
+			like.append(by_id[id])
+	if demo or offline:  # (nothing asked of a server: a few at random, and like ones by their shelf)
+		var pool := movies.duplicate()
+		pool.shuffle()
+		going = pool.slice(0, 7)
+		liked = pool[7] if pool.size() > 7 else {}
+		like = pool.filter(func(t: Dictionary) -> bool: return not liked.is_empty() and t.c == liked.c and t != liked).slice(0, 13)
+	var added := items.duplicate()
+	added.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a.get("added", "") > b.get("added", ""))
+	var blind := movies.filter(func(t: Dictionary) -> bool: return not t.get("seen", false))
+	blind.shuffle()
+	return { "going": going.slice(0, 13), "added": added.slice(0, 26), "liked": liked.get("t", ""), "like": like.slice(0, 13), "blind": blind.slice(0, 26) }
 
 
 func mark_seen() -> void:  # a tape's seen when everything on it's been watched

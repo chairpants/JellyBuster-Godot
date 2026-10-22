@@ -27,6 +27,7 @@ const MIN_K := 0  # bands added at the least: VaultBuster's own store, a small l
 const COPIES := { "wall": 4, "other": 3 }  # the most of any one title (the new releases' walls, everywhere else)
 const BAND_STEP := 2 * 0.55 + 2.0  # a band and the aisle behind it: what dz comes in steps of
 const STRIPE := 0.02  # how far the side walls' blue stripe stands off them (the back wall's is flat)
+const DISPLAY := Vector3(-4.0, 0.0, 6.6)  # the island of picks by the counter (_display): on the open carpet between it and the first bands
 const KIDS := { "z": 4.2, "bays": 3 }  # one gondola out from the east wall, centred front to back on the kids' carpet (z 0.1 to 8.3)
 const TAGS := [["#d7262e", "#ffffff"], ["#ffd400", "#00349c"], ["#1f9e48", "#ffffff"], ["#6c2d91", "#ffd400"], ["#f26b21", "#ffffff"], ["#00a4b4", "#ffffff"], ["#111111", "#ff3b30"], ["#d6247d", "#ffffff"]]  # endcap genre cards: background, lettering
 const CANDY := ["#d7262e", "#ffd400", "#5a3418", "#6c2d91", "#1f9e48", "#f26b21", "#1c4dbb", "#e85a9b"]  # the candy boxes' colours
@@ -198,6 +199,7 @@ func _ready() -> void:
 		for r: Dictionary in all[a]:
 			bi = _run(r, bays, bi, a)
 	_end_signs()
+	_display()
 	for key: Array in _merged:
 		var tags := MeshInstance3D.new()
 		tags.mesh = _merged[key].commit()
@@ -305,6 +307,40 @@ func _bay(xf: Transform3D, spec: Dictionary, bay: Array, area: String) -> void:
 		t.xf = xf * Transform3D(tilt, cover - n * (TAPE.z / 2.0 + 0.001))
 		t.a = area
 		slots.append(t)
+
+
+func _display() -> void:  # an island of low shelving by the counter, a face to the door and one to the store: what to go on with and what's
+	# new; what's like the last film watched, and a shelf of films in brown paper to take a chance on. Copies of what's on the shelves (each still on its own)
+	var p: Dictionary = get_node("/root/Library").picks()
+	var spec := SHORT
+	var n: int = spec.per_row
+	var faces := [  # [which way it faces (ry), its shelves' sections top down, their tapes]
+		[PI / 2, ["CONTINUE WATCHING", "JUST ADDED", "JUST ADDED"], [p.going, p.added.slice(0, n), p.added.slice(n, 2 * n)]],
+		[-PI / 2, ["IF YOU LIKED " + p.liked.to_upper() if p.liked else "BLIND DATE WITH A MOVIE", "" if p.like.size() > n else "BLIND DATE WITH A MOVIE", "BLIND DATE WITH A MOVIE"],
+			[p.like.slice(0, n) if p.liked else p.blind.slice(2 * n, 3 * n), p.like.slice(n, 2 * n) if p.like.size() > n else p.blind.slice(n, 2 * n), p.blind.slice(0, n)]]]  # (not enough like it for two shelves: a second of blind dates)
+	var made := {}  # id -> copies made of it here
+	for f: Array in faces:
+		var basis := Basis(Vector3.UP, f[0])
+		var xf := Transform3D(basis, DISPLAY)
+		var names: Array = f[1].duplicate()
+		var tapes := []
+		for r in spec.rows:
+			var row: Array = f[2][r]
+			if names[r] == "" and r > 0:
+				names[r] = names[r - 1]
+			for k in n:
+				if k >= row.size():
+					tapes.append(null)
+					continue
+				var t: Dictionary = row[k].duplicate()
+				made[t.id] = made.get(t.id, 0) + 1
+				t.copy = 50 + made[t.id]  # (the shelves' own copies are 2 to 4)
+				if names[r].begins_with("BLIND"):
+					t.wrapped = true
+				tapes.append(t)
+		_bay(xf, spec, [names, tapes], "picks")
+		for e in [-1, 1]:
+			_part("upright", Transform3D(basis, DISPLAY + basis.z * e * spec.len / 2.0), _wedge(spec))
 
 
 func _candy(xf: Transform3D, spec: Dictionary) -> void:  # a bay of boxed candy, every shelf full, under a CANDY strip

@@ -201,8 +201,11 @@ func stock(store: Node) -> void:  # the store's tapes onto its shelves (store.gd
 			var layers := {}  # id -> its layer
 			for j in n:
 				var u: Dictionary = tapes[i + j]
-				u.layer = layers.get_or_add(u.id, layers.size())
+				u.layer = layers.get_or_add(u.id + ("~" if u.get("wrapped", false) else ""), layers.size())  # (one in brown paper: a layer of its own)
 				if u.layer < images.size():
+					continue
+				if u.get("wrapped", false):
+					images.append(_paper())
 					continue
 				var c: Color = colours.get_or_add(u.c, Color.from_hsv(colours.size() * 0.13, 0.45, 0.55))
 				var img := Image.create(COVER.x, COVER.y, false, Image.FORMAT_RGB8)
@@ -322,7 +325,8 @@ func _cover_worker(gen: int) -> void:  # covers onto the shelf, the next one not
 			return
 		if shelf[0] != null:
 			for c: Dictionary in [t] + _copies.get(t.id, []):
-				_chunks[c.i / CHUNK].tex.update_layer(shelf[0], c.layer)
+				if not c.get("wrapped", false):
+					_chunks[c.i / CHUNK].tex.update_layer(shelf[0], c.layer)
 		n += 1
 
 
@@ -416,6 +420,30 @@ func _looks_tick() -> void:  # what the screens' looks need to know (picture.gd)
 		m.set_shader_parameter("uCue", now.z)
 
 
+func named(t: Dictionary) -> String:  # what it's called, as far as you can tell: one in brown paper doesn't say
+	return "A blind date, in brown paper" if t.get("wrapped", false) else t.t
+
+
+static var _paper_img: Image
+static func _paper() -> Image:  # a tape wrapped in brown paper and tied with string, a blank tag on it (the store's display: BLIND DATE)
+	if _paper_img != null:
+		return _paper_img
+	var img := Image.create(COVER.x, COVER.y, false, Image.FORMAT_RGB8)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	for y in COVER.y:
+		for x in COVER.x:
+			var g := 0.03 * sin(x * 0.9 + y * 0.13) + rng.randf_range(-0.035, 0.035)  # (the paper's grain, and a crease or two)
+			img.set_pixel(x, y, Color(0.66 + g, 0.5 + g, 0.33 + g))
+	var string := Color(0.9, 0.86, 0.76)
+	img.fill_rect(Rect2i(COVER.x / 2 - 2, 0, 4, COVER.y), string)
+	img.fill_rect(Rect2i(0, COVER.y * 2 / 5 - 2, COVER.x, 4), string)
+	img.fill_rect(Rect2i(COVER.x / 2 + 6, COVER.y * 2 / 5 + 10, COVER.x / 3, COVER.y / 7), Color(0.95, 0.93, 0.86))  # the tag
+	img.generate_mipmaps()
+	_paper_img = img
+	return img
+
+
 func _cell(p: Vector3) -> Vector3i:
 	return Vector3i((p / CELL).floor())
 
@@ -483,7 +511,7 @@ func _sharp_tick(dt: float) -> void:
 	var near := []
 	for t: Dictionary in tapes:
 		var to: Vector3 = t.xf.origin - eye
-		if not t.get("off", false) and to.length_squared() < SHARP.near * SHARP.near and t.xf.basis.z.dot(to) < 0.0:
+		if not t.get("off", false) and not t.get("wrapped", false) and to.length_squared() < SHARP.near * SHARP.near and t.xf.basis.z.dot(to) < 0.0:
 			near.append([to.length_squared(), t])
 	near.sort_custom(func(a: Array, b: Array) -> bool: return a[0] < b[0])
 	var want := near.slice(0, SHARP.n).map(func(p: Array) -> Dictionary: return p[1])
@@ -635,7 +663,7 @@ func recover(t: Dictionary, say := true) -> void:  # its cover's been changed on
 	_stickered(im, t)
 	im.convert(Image.FORMAT_RGB8)
 	im.generate_mipmaps()
-	for c: Dictionary in tapes.filter(func(x: Dictionary) -> bool: return x.id == t.id):  # (it, and its copies)
+	for c: Dictionary in tapes.filter(func(x: Dictionary) -> bool: return x.id == t.id and not x.get("wrapped", false)):  # (it, and its copies; not one in brown paper)
 		c.seen = t.get("seen", false)
 		if held == c:
 			var m: StandardMaterial3D = _hand_cover.material_override
@@ -672,7 +700,7 @@ func show_tape(t: Dictionary) -> void:  # the tape in your hand, its cover full 
 	flipped = false
 	var m: StandardMaterial3D = _hand_cover.material_override
 	var path: String = Library.cover_path(t.cover)
-	m.albedo_texture = _mipped(_stickered(Image.load_from_file(path), t)) if FileAccess.file_exists(path) else null
+	m.albedo_texture = _mipped(_paper()) if t.get("wrapped", false) else _mipped(_stickered(Image.load_from_file(path), t)) if FileAccess.file_exists(path) else null
 	m.albedo_color = Color.WHITE if m.albedo_texture != null else Color(0.3, 0.3, 0.35)
 	_hand.transform = HAND
 	_hand.visible = true
@@ -683,6 +711,10 @@ func _show_back(t: Dictionary) -> void:  # the back of the box, once it's drawn 
 	var m: StandardMaterial3D = _hand_back.material_override
 	m.albedo_texture = null
 	m.albedo_color = Color(0.12, 0.12, 0.14)
+	if t.get("wrapped", false):  # (no peeking)
+		m.albedo_texture = _mipped(_paper())
+		m.albedo_color = Color.WHITE
+		return
 	var tex: Texture2D = await _backs.build(t)
 	if held == t and tex != null:
 		m.albedo_texture = tex
@@ -734,7 +766,7 @@ func _process(dt: float) -> void:
 			_backs.build(hovered)  # (not waited on: it's ready, or nearly, by the time it's picked up and turned over)
 	if held != null:
 		_hand.transform = _hand.transform.interpolate_with((LOOK_BACK if flipped else LOOK) if inspecting else HAND, minf(1.0, dt * 14.0))
-	hud.inventory(inv.map(func(e: Dictionary) -> Dictionary: return { "name": e.t, "used": wind_frac(e) }), inv_sel)
+	hud.inventory(inv.map(func(e: Dictionary) -> Dictionary: return { "name": named(e), "used": wind_frac(e) }), inv_sel)
 	_scrub_tick(dt)
 	var heard: bool = hud.is_full_screen() or $"../Ambience".film_clear  # (close enough to the screen to hear it plainly: else it's someone else's film)
 	hud.caption(video.caption() if playing != null and not video.url.is_empty() and heard else "")
@@ -930,14 +962,14 @@ func clear_aim() -> void:
 func aim(from: Vector3, dir: Vector3, hit: Dictionary, hit_d: float) -> String:
 	clear_aim()
 	if held != null and inspecting:
-		return "" if flipped else "%s\n%s\nClick — keep it · Right-click — put it back · R — turn it over" % [held.t, held.c]
+		return "" if flipped else "%s\n%s\nClick — keep it · Right-click — put it back · R — turn it over" % [named(held), "?" if held.get("wrapped", false) else held.c]
 	if held != null and held.off:  # its own empty slot: within 8 cm of the middle of it, nothing solid in front
 		var at: Vector3 = held.xf.origin - from
 		var t := at.dot(dir)
 		aim_slot = t > 0.3 and t < REACH and (at - dir * t).length() < 0.08 and hit_d > t - 0.15
 		if aim_slot:
 			_show_box(held)
-			return "Click — put %s back" % held.t
+			return "Click — put %s back" % named(held)
 	if hit and hit_d < REACH:  # a tape: the cover the crosshair's on, of those near where it lands on the shelf
 		var best := INF
 		var c := _cell(hit.position)
@@ -960,7 +992,7 @@ func aim(from: Vector3, dir: Vector3, hit: Dictionary, hit_d: float) -> String:
 							hovered = t
 		if hovered != null:
 			_show_box(hovered)
-			return "%s\n%s" % [hovered.t, hovered.c]
+			return "%s\n%s" % [named(hovered), "?" if hovered.get("wrapped", false) else hovered.c]
 	for sc: Dictionary in screens:  # the screen: you have to actually be looking at it
 		var n := Vector3(sin(sc.ry), 0, cos(sc.ry))
 		var facing := dir.dot(n)
@@ -971,7 +1003,7 @@ func aim(from: Vector3, dir: Vector3, hit: Dictionary, hit_d: float) -> String:
 		if t > 0.0 and t < sc.reach and t < hit_d + 0.2 and absf(on.dot(Vector3(cos(sc.ry), 0, -sin(sc.ry)))) < sc.w / 2.0 and absf(on.y) < sc.h / 2.0:
 			aim_tv = sc
 			if held != null:
-				return "Press E to put “%s” on" % held.t
+				return "Press E to put “%s” on" % named(held)
 			return "Press E to eject the tape" if playing != null else "Take a tape off the shelves to play it here"
 	return ""
 
