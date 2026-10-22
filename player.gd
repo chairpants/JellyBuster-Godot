@@ -91,6 +91,9 @@ func _ready() -> void:
 			w.pressed = false
 			Input.parse_input_event(w)
 			print("walk: got to %s" % global_position)
+	for a in args:
+		if a.begins_with("--perf="):  # how it runs from here: that many seconds unthrottled, then the averages, and quit
+			await _perf(a.trim_prefix("--perf=").to_float())
 	if not shot:
 		return
 	await get_tree().create_timer(1.0).timeout
@@ -99,6 +102,31 @@ func _ready() -> void:
 		preload("res://tools/snapshot.gd").save(owner)
 	else:
 		get_viewport().get_texture().get_image().save_png("res://shot.png")
+	get_tree().quit()
+
+
+func _perf(secs: float) -> void:  # (--perf=s: frames a second, and what each frame drew and cost, averaged; the slowest frame)
+	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
+	Engine.max_fps = 0
+	await get_tree().create_timer(1.0).timeout  # (settled)
+	var sums := { "draws": 0.0, "objects": 0.0, "prims": 0.0, "process": 0.0, "physics": 0.0 }
+	var frames := 0
+	var worst := 0.0
+	var t0 := Time.get_ticks_usec()
+	var last := t0
+	while Time.get_ticks_usec() - t0 < secs * 1000000.0:
+		await get_tree().process_frame
+		var now := Time.get_ticks_usec()
+		worst = maxf(worst, (now - last) / 1000.0)
+		last = now
+		frames += 1
+		sums.draws += Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)
+		sums.objects += Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME)
+		sums.prims += Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME)
+		sums.process += Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0
+		sums.physics += Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0
+	var ms := (Time.get_ticks_usec() - t0) / 1000.0 / frames
+	print("perf: %.1f fps (%.2f ms a frame, slowest %.1f) · %d draw calls · %d objects · %dk triangles · scripts %.2f ms · physics %.2f ms" % [1000.0 / ms, ms, worst, sums.draws / frames, sums.objects / frames, sums.prims / frames / 1000.0, sums.process / frames, sums.physics / frames])
 	get_tree().quit()
 
 

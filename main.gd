@@ -57,7 +57,51 @@ func _ready() -> void:
 		for f in DirAccess.get_files_at("user://"):  # (and the ones from an older level go)
 			if f.begins_with("collision_") and f != cache_path.get_file():
 				DirAccess.remove_absolute("user://" + f)
-	print("world: %d meshes solid" % solid)
+	print("world: %d meshes solid, %d of them hiding what's behind them" % [solid, _occluders()])
+
+
+func _occluders() -> int:  # what's behind a wall isn't drawn: the store's back rooms from the sales floor, the outside from them, and so on.
+	# Only the solid slabs: walls, floors and ceilings that are one piece (their triangles cover the whole of their box: nothing cut out of them), opaque, and don't move
+	get_viewport().use_occlusion_culling = true
+	var doors := {}
+	for d: Dictionary in $Interact.doors:
+		doors[d.pivot] = true
+	var n := 0
+	for m: MeshInstance3D in $World.find_children("*", "MeshInstance3D", true, false):
+		if m.is_queued_for_deletion() or m.mesh == null or _walk_through(m):
+			continue
+		var up := m.get_parent()
+		while up != $World and not doors.has(up):
+			up = up.get_parent()
+		if up != $World:
+			continue  # (a door)
+		var b := m.get_aabb()
+		var dims := [b.size.x, b.size.y, b.size.z]
+		dims.sort()
+		if dims[0] > 0.35 or dims[1] < 1.0 or dims[1] * dims[2] < 2.0:
+			continue  # (not a slab, or too small to hide much)
+		var see_through := false
+		for i in m.mesh.get_surface_count():
+			var mat := m.get_active_material(i)
+			if mat is ShaderMaterial and mat.shader and ("blend_mix" in mat.shader.code or "ALPHA =" in mat.shader.code) or mat is BaseMaterial3D and mat.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED:
+				see_through = true
+		if see_through:
+			continue
+		var faces := m.mesh.get_faces()
+		var area := 0.0
+		for i in range(0, faces.size(), 3):
+			area += (faces[i + 1] - faces[i]).cross(faces[i + 2] - faces[i]).length() / 2.0
+		var whole: float = dims[1] * dims[2] * (1.0 if dims[0] < 0.005 else 2.0) + 2.0 * dims[0] * (dims[1] + dims[2])  # (a plane: one face; a box: all six)
+		if area < whole * 0.98:
+			continue  # (something cut out of it: a window, a doorway)
+		var o := OccluderInstance3D.new()
+		var box := BoxOccluder3D.new()
+		box.size = b.size.max(Vector3.ONE * 0.01)
+		o.occluder = box
+		o.position = b.get_center()
+		m.add_child(o)
+		n += 1
+	return n
 
 
 func _walk_through(n: Node) -> bool:

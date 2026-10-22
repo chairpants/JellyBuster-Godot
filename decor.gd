@@ -237,6 +237,10 @@ func _balloons(colors: Array) -> void:
 		string.radial_segments = 6
 		var mid := top + Vector3(0, BALLOON.mid, 0)
 		_bob.append([ball, _tie.distance_to(mid), i * 1.7, _put(string, _mat(Color("#dddddd")), Transform3D.IDENTITY), mid, Vector3.ZERO, mid])
+	for b: Array in _bob:  # (no shadows: moving every frame, they'd have every light that sees them draw its shadows again, every frame)
+		b[3].cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		for g in b[0].find_children("*", "GeometryInstance3D", true, false):
+			g.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	for k in 300:  # (already settled into a bunch when the store opens)
 		_float(1.0 / 60.0)
 

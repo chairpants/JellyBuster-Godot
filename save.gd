@@ -7,7 +7,7 @@ extends Node
 
 const FILE := "user://state.cfg"
 const EVERY := 30.0
-const SETUP := ["--at=", "--hour=", "--weather=", "--lights", "--off=", "--flash", "--film", "--walk="]  # player.gd's: where you are, what time, what weather, what's on
+const SETUP := ["--at=", "--hour=", "--weather=", "--lights", "--off=", "--flash", "--film", "--walk=", "--perf="]  # player.gd's: where you are, what time, what weather, what's on
 
 @onready var main := get_parent()
 var _t := 0.0
