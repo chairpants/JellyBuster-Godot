@@ -78,3 +78,14 @@ the game as it opens, not the level: `store.gd`.)
 | ![](aisles/down_before.png) | ![](aisles/down_after.png) |
 | ![](aisles/end_before.png) | ![](aisles/end_after.png) |
 | ![](aisles/ceiling_before.png) | ![](aisles/ceiling_after.png) |
+
+## The restroom (`lavatory`)
+
+Furnished as one is: grab bars beside the toilet and over its tank, a baby-changing station folded up on the bare east
+wall, a floor drain, the exhaust fan's grille in the ceiling.
+
+| Before | After |
+|---|---|
+| ![](restroom/toilet_before.png) | ![](restroom/toilet_after.png) |
+| ![](restroom/back_before.png) | ![](restroom/back_after.png) |
+| ![](restroom/door_before.png) | ![](restroom/door_after.png) |

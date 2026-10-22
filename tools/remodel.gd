@@ -36,6 +36,8 @@ extends SceneTree
 ## aisles: the hanging TVs over the sales floor (a box, a smaller box behind, a screen) made CRTs: the tube's housing
 ##   tapering back to a neck, a bezel round the picture with its badge and a power light, vents in the top, a mounting
 ##   plate behind; and the ceiling given its sprinkler heads, a grid of them clear of the light panels
+## lavatory: the restroom furnished as one is: grab bars by the toilet, a baby-changing station folded up on the bare
+##   east wall, a floor drain, an exhaust fan's grille in the ceiling
 ## restroom: the floors either side of the wall between the restroom and the break room meeting under it, square (boh
 ##   moved that wall over, but only the floors' far corners with it: a wedge of the break room's floor in the restroom).
 ##
@@ -111,6 +113,12 @@ func _init() -> void:
 			_breakroom()
 		"aisles":
 			_aisles()
+		"lavatory":
+			if not "boh" in done:
+				push_error("remodel: lavatory goes after boh")
+				quit(1)
+				return
+			_lavatory()
 		"railings":
 			if not "theater" in done:
 				push_error("remodel: railings go after theater")
@@ -143,7 +151,7 @@ func _init() -> void:
 	var err := packed.pack(w)
 	if err == OK:
 		err = ResourceSaver.save(packed, WORLD, ResourceSaver.FLAG_COMPRESS)  # (as it came: compressed)
-	if not section in ["strip", "restroom", "railings", "hall", "roof", "closet", "stairwell", "breakroom", "aisles"]:  # (the level only: the data's as it was)
+	if not section in ["strip", "restroom", "railings", "hall", "roof", "closet", "stairwell", "breakroom", "aisles", "lavatory"]:  # (the level only: the data's as it was)
 		var f := FileAccess.open(DATA, FileAccess.WRITE)
 		f.store_string(_json(data))
 		f.close()
@@ -500,6 +508,36 @@ func _crt(g: Node3D, body: MeshInstance3D, rear: MeshInstance3D) -> void:  # in 
 	add.call(box.call(Vector3(0.22, 0.16, 0.02)), "crt mount plate", Transform3D(Basis.IDENTITY, Vector3(0.0, 0.0, z1 - 0.01)), dark)
 
 
+func _lavatory() -> void:
+	var xe := 10.897  # the east wall's tiles; the back wall's
+	var zb := 34.897
+	var steel := Color("c4c8cc")
+	# grab bars: along the east wall beside the toilet, and on the back wall over its tank
+	for g: Array in [[Vector3(xe - 0.05, 0.98, 33.75), Vector3(xe - 0.05, 0.98, 34.75), Vector3.RIGHT], [Vector3(9.7, 0.98, zb - 0.05), Vector3(10.65, 0.98, zb - 0.05), Vector3.BACK]]:
+		var a: Vector3 = g[0]
+		var b: Vector3 = g[1]
+		var n: Vector3 = g[2]
+		bar("boh", "grab bar", a, b, Vector2(0.032, 0.032), steel)
+		for e: Vector3 in [a, b]:
+			bar("boh", "grab bar post", e, e + n * 0.048, Vector2(0.024, 0.024), steel)
+			cylinder("boh", "grab bar flange", e + n * 0.046, 0.04, 0.006, n, steel)
+	# the changing station, folded up on the east wall
+	var cz := 32.4
+	block("boh", "changing station", Vector3(xe - 0.11, 0.85, cz - 0.45), Vector3(xe, 1.42, cz + 0.45), Color("c9c6be"))
+	block("boh", "changing station lid", Vector3(xe - 0.115, 0.88, cz - 0.42), Vector3(xe - 0.11, 1.39, cz + 0.42), Color("d8d5cd"))
+	block("boh", "changing station handle", Vector3(xe - 0.13, 1.3, cz - 0.12), Vector3(xe - 0.115, 1.34, cz + 0.12), Color("8f8c84"))
+	for k in 2:
+		block("boh", "changing station hinge", Vector3(xe - 0.12, 0.86, cz - 0.32 + k * 0.56), Vector3(xe - 0.105, 0.9, cz - 0.24 + k * 0.56), Color("8f8c84"))
+	block("boh", "changing station badge", Vector3(xe - 0.1155, 1.15, cz - 0.07), Vector3(xe - 0.114, 1.27, cz + 0.07), Color("1c4dbb"))
+	# a floor drain; the exhaust fan's grille overhead
+	cylinder("boh", "floor drain", Vector3(9.4, 0.003, 32.8), 0.075, 0.006, Vector3.UP, Color("a9aeb3"))
+	for k in 5:
+		block("boh", "floor drain slot", Vector3(9.35 - 0.0, 0.0065, 32.76 + k * 0.02 - 0.02), Vector3(9.45, 0.0068, 32.77 + k * 0.02 - 0.02), Color("2b2d30"))
+	block("boh", "exhaust grille", Vector3(9.2, 2.685, 32.8), Vector3(9.55, 2.7, 33.15), Color("e6e8ea"))
+	for k in 7:
+		block("boh", "exhaust slat", Vector3(9.23, 2.683, 32.83 + k * 0.045), Vector3(9.52, 2.685, 32.85 + k * 0.045), Color("8f9398"))
+
+
 const HALL := { "x": [2.0, 9.4], "z": [28.1, 29.7], "base": Color("2e2f31"), "door": Color("d4d6d8"), "trim": Color("bfc3c7"), "steel": Color("b8bcc0"), "cork": Color("b0875a"), "red": Color("c8102e") }
 
 
@@ -572,7 +610,8 @@ static func _lettering(text: String, ink: Color, paper: Color) -> Image:  # capi
 		"I": ["11111", "00100", "00100", "00100", "00100", "00100", "11111"], "T": ["11111", "00100", "00100", "00100", "00100", "00100", "00100"],
 		"M": ["10001", "11011", "10101", "10101", "10001", "10001", "10001"], "S": ["01111", "10000", "10000", "01110", "00001", "00001", "11110"], "D": ["11110", "10001", "10001", "10001", "10001", "10001", "11110"],
 		"B": ["11110", "10001", "10001", "11110", "10001", "10001", "11110"], "O": ["01110", "10001", "10001", "10001", "10001", "10001", "01110"], "H": ["10001", "10001", "10001", "11111", "10001", "10001", "10001"],
-		">": ["01000", "00100", "00010", "00001", "00010", "00100", "01000"] }
+		">": ["01000", "00100", "00010", "00001", "00010", "00100", "01000"],
+		"W": ["10001", "10001", "10001", "10101", "10101", "11011", "10001"], "A": ["01110", "10001", "10001", "11111", "10001", "10001", "10001"], "N": ["10001", "11001", "10101", "10011", "10001", "10001", "10001"] }
 	const PX := 8
 	var w := text.length() * 6 * PX + 2 * PX
 	var img := Image.create(w, 11 * PX, false, Image.FORMAT_RGB8)
