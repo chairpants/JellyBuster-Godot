@@ -28,6 +28,8 @@ extends SceneTree
 ##   mount; next door's rooftop unit, a plain box, given its louvres, its fan, its rails and its disconnect
 ## closet: the janitor's closet's mop bucket (a box of boxes) a rolling one, its tub oval and yellow, dirty water in it,
 ##   the wringer on its end and the press's lever up, on casters; the safety sheets' station on the wall by the shelves
+## stairwell: the stairs up to the booth less bare: its walls block, coursed and pointed (laid over them, clear of the door
+##   and the way out); the rails on brackets; a grip strip on every tread; BOOTH and the way, stencilled on the landing's wall
 ## restroom: the floors either side of the wall between the restroom and the break room meeting under it, square (boh
 ##   moved that wall over, but only the floors' far corners with it: a wedge of the break room's floor in the restroom).
 ##
@@ -89,6 +91,12 @@ func _init() -> void:
 				quit(1)
 				return
 			_closet()
+		"stairwell":
+			if not "theater" in done:
+				push_error("remodel: stairwell goes after theater")
+				quit(1)
+				return
+			_stairwell()
 		"railings":
 			if not "theater" in done:
 				push_error("remodel: railings go after theater")
@@ -121,7 +129,7 @@ func _init() -> void:
 	var err := packed.pack(w)
 	if err == OK:
 		err = ResourceSaver.save(packed, WORLD, ResourceSaver.FLAG_COMPRESS)  # (as it came: compressed)
-	if not section in ["strip", "restroom", "railings", "hall", "roof", "closet"]:  # (the level only: the data's as it was)
+	if not section in ["strip", "restroom", "railings", "hall", "roof", "closet", "stairwell"]:  # (the level only: the data's as it was)
 		var f := FileAccess.open(DATA, FileAccess.WRITE)
 		f.store_string(_json(data))
 		f.close()
@@ -258,6 +266,82 @@ func _closet() -> void:
 	hm.global_transform = Transform3D(Basis(Vector3.UP, -PI / 2.0), Vector3(x1 - 0.101, st[3] - 0.05, (st[0] + st[1]) / 2.0))
 
 
+func _stairwell() -> void:
+	var x0: float = SHAFT.x0 + 0.15  # (as _theater has them: the far flight's side; between the flights)
+	var mid: float = SHAFT.split
+	var cmu := StandardMaterial3D.new()  # the walls: block, two wide and two courses to the picture, tiled over each face
+	cmu.albedo_texture = ImageTexture.create_from_image(_blockwork())
+	cmu.albedo_color = Color(0.74, 0.75, 0.77)  # (painted grey, as a staff stair is)
+	for f: Array in [  # [the face's corner, its other, which way it looks]
+			[Vector3(x0, 0, 29.8), Vector3(x0, BOOTH, 34.88), Vector3.RIGHT], [Vector3(x0, BOOTH, SHAFT.top), Vector3(x0, CEIL - 0.1, 34.88), Vector3.RIGHT],
+			[Vector3(x0, 0, 34.88), Vector3(1.88, CEIL - 0.1, 34.88), Vector3.BACK * -1.0], [Vector3(1.88, 0, 29.8), Vector3(1.88, CEIL - 0.1, 34.88), Vector3.LEFT], [Vector3(x0, 2.7, 29.8), Vector3(1.88, CEIL - 0.1, 29.8), Vector3.BACK],
+			[Vector3(x0, 0, 29.8), Vector3(0.69, 2.7, 29.8), Vector3.BACK], [Vector3(0.69, 2.19, 29.8), Vector3(1.88, 2.7, 29.8), Vector3.BACK],
+			[Vector3(mid, 0, 29.8), Vector3(mid, BOOTH + 1.1, SHAFT.turn), Vector3.LEFT], [Vector3(mid + 0.1, 0, 29.8), Vector3(mid + 0.1, BOOTH + 1.1, SHAFT.turn), Vector3.RIGHT]]:
+		var a: Vector3 = f[0]
+		var b: Vector3 = f[1]
+		var n: Vector3 = f[2]
+		var along := absf(b.z - a.z) if absf(n.x) > 0.5 else absf(b.x - a.x)
+		var tall := b.y - a.y
+		var q := QuadMesh.new()
+		q.size = Vector2(along, tall)
+		var m: StandardMaterial3D = cmu.duplicate()
+		m.uv1_scale = Vector3(along / 0.8, tall / 0.4, 1.0)
+		q.material = m
+		var mi := _add("lobby", "stairwell blockwork", q)
+		mi.global_transform = Transform3D(Basis(Vector3.UP, atan2(n.x, n.z)), (a + b) / 2.0 + n * 0.003)  # (the quad's face, +z, turned to look out of the wall)
+	# the rails, on brackets off the walls
+	var rise := BOOTH / 18.0
+	var r1 := 1.84
+	for rail: Array in [[Vector3(r1, rise + 0.9, SHAFT.top), Vector3(r1, BOOTH / 2.0 + 0.9, SHAFT.turn), Vector3(1.88, 0, 0)],
+			[Vector3(x0 + 0.04, BOOTH / 2.0 + rise + 0.9, SHAFT.turn), Vector3(x0 + 0.04, BOOTH + 0.9, SHAFT.top), Vector3(x0, 0, 0)],
+			[Vector3(1.86, BOOTH / 2.0 + 0.9, 34.84), Vector3(x0 + 0.02, BOOTH / 2.0 + 0.9, 34.84), Vector3(0, 0, 34.88)]]:
+		for t: float in [0.12, 0.5, 0.88]:
+			var p: Vector3 = (rail[0] as Vector3).lerp(rail[1], t) - Vector3(0, 0.05, 0)
+			var wall: Vector3 = p
+			if rail[2].x != 0.0:
+				wall.x = rail[2].x
+			else:
+				wall.z = rail[2].z
+			bar("lobby", "rail bracket", wall - Vector3(0, 0.04, 0), p, Vector2(0.015, 0.015), C.iron)
+	# a grip strip on every tread, a hand's width back from the nosing
+	var run := (SHAFT.turn - SHAFT.top) / 8.0
+	for i in 8:
+		var z: float = SHAFT.top + i * run
+		var y := (i + 1) * rise
+		block("lobby", "tread grip", Vector3(mid + 0.15, y, z + 0.05), Vector3(1.83, y + 0.002, z + 0.1), C.nose)
+	for j in 8:
+		var z: float = SHAFT.turn - (j + 1) * run
+		var y := BOOTH / 2.0 + (j + 1) * rise
+		block("lobby", "tread grip", Vector3(x0 + 0.05, y, z + run - 0.1), Vector3(mid - 0.05, y + 0.002, z + run - 0.05), C.nose)
+	# BOOTH, and the way, stencilled on the landing's wall
+	var sign := QuadMesh.new()
+	sign.size = Vector2(0.75, 0.16)
+	var paint := StandardMaterial3D.new()
+	paint.albedo_texture = ImageTexture.create_from_image(_lettering("BOOTH >", Color("f2c200"), Color("3a3d42")))
+	sign.material = paint
+	var sm := _add("lobby", "stairwell sign", sign)
+	sm.global_transform = Transform3D(Basis(Vector3.UP, PI), Vector3(0.55, BOOTH / 2.0 + 1.0, 34.875))
+
+
+static func _blockwork() -> Image:  # concrete block, 40 by 20, half-bond: two blocks across and two courses up the picture, the joints recessed and darker
+	const W := 256
+	const H := 128
+	var img := Image.create(W, H, false, Image.FORMAT_RGB8)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 11
+	for y in H:
+		for x in W:
+			var course := y / 64
+			var xs := (x + (64 if course % 2 == 1 else 0)) % W
+			var joint := y % 64 < 3 or xs % 128 < 3
+			var g := 0.6 + rng.randf_range(-0.04, 0.04) + 0.02 * sin(x * 0.31 + y * 0.17)
+			if joint:
+				g = 0.46 + rng.randf_range(-0.02, 0.02)
+			img.set_pixel(x, y, Color(g * 0.98, g, g * 1.04))
+	img.generate_mipmaps()
+	return img
+
+
 const HALL := { "x": [2.0, 9.4], "z": [28.1, 29.7], "base": Color("2e2f31"), "door": Color("d4d6d8"), "trim": Color("bfc3c7"), "steel": Color("b8bcc0"), "cork": Color("b0875a"), "red": Color("c8102e") }
 
 
@@ -328,7 +412,9 @@ func _hall() -> void:
 static func _lettering(text: String, ink: Color, paper: Color) -> Image:  # capitals, five by seven, drawn big on a sign's face (for what's lit: the room's light won't be on them)
 	const GLYPHS := { "E": ["11111", "10000", "10000", "11110", "10000", "10000", "11111"], "X": ["10001", "10001", "01010", "00100", "01010", "10001", "10001"],
 		"I": ["11111", "00100", "00100", "00100", "00100", "00100", "11111"], "T": ["11111", "00100", "00100", "00100", "00100", "00100", "00100"],
-		"M": ["10001", "11011", "10101", "10101", "10001", "10001", "10001"], "S": ["01111", "10000", "10000", "01110", "00001", "00001", "11110"], "D": ["11110", "10001", "10001", "10001", "10001", "10001", "11110"] }
+		"M": ["10001", "11011", "10101", "10101", "10001", "10001", "10001"], "S": ["01111", "10000", "10000", "01110", "00001", "00001", "11110"], "D": ["11110", "10001", "10001", "10001", "10001", "10001", "11110"],
+		"B": ["11110", "10001", "10001", "11110", "10001", "10001", "11110"], "O": ["01110", "10001", "10001", "10001", "10001", "10001", "01110"], "H": ["10001", "10001", "10001", "11111", "10001", "10001", "10001"],
+		">": ["01000", "00100", "00010", "00001", "00010", "00100", "01000"] }
 	const PX := 8
 	var w := text.length() * 6 * PX + 2 * PX
 	var img := Image.create(w, 11 * PX, false, Image.FORMAT_RGB8)

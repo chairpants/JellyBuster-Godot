@@ -39,3 +39,14 @@ the press's lever up, on casters. On the wall by the shelves, the safety sheets'
 | ![](closet/msds_before.png) | ![](closet/msds_after.png) |
 | ![](closet/in_before.png) | ![](closet/in_after.png) |
 | ![](closet/back_before.png) | ![](closet/back_after.png) |
+
+## The stairwell to the booth (`stairwell`)
+
+Its walls block, coursed and pointed and painted grey (laid over them, clear of the door and the way out at the top);
+the rails on brackets; a grip strip on every tread; BOOTH and the way, stencilled on the landing's wall.
+
+| Before | After |
+|---|---|
+| ![](stairwell/foot_before.png) | ![](stairwell/foot_after.png) |
+| ![](stairwell/landing_before.png) | ![](stairwell/landing_after.png) |
+| ![](stairwell/top_before.png) | ![](stairwell/top_after.png) |
