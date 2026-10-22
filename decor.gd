@@ -2,13 +2,16 @@
 extends Node3D
 ## What a store puts up that isn't stock: a bunch of balloons at the counter's end, all year; and through October,
 ## Halloween: jack-o'-lanterns on the counter (a candle in each, guttering), orange and black bunting along the windows,
-## cobwebs up in the sales floor's corners. By the computer's date (--season=halloween, or =none, to see it otherwise).
+## cobwebs up in the sales floor's corners. Through December: a string of lights along the windows, a little tree on the
+## counter, the balloons red, green, white and gold. By the computer's date (--season=halloween, =christmas, or =none).
 ## All lit by the room's light like the rest (room.gd), but the pumpkins' insides, which glow through their cut faces.
 ## In the editor too (main.tscn has it), standing still: what's on the counter put down on the level's own triangles, there
 ## being nothing solid yet (main.gd makes the level solid as the game starts), and lit as it comes.
 
 const COUNTER_Y := 1.1  # the returns counter's top, if nothing's found there (_on_top)
-const BALLOONS := { "at": [-2.3, 1.4], "colors": ["#d7262e", "#ffd400", "#1c4dbb", "#d7262e", "#ffd400"], "fall": ["#f26b21", "#111111", "#6c2d91", "#f26b21", "#111111"] }  # x, z on the counter; the colours, and October's
+const BALLOONS := { "at": [-2.3, 1.4], "colors": ["#d7262e", "#ffd400", "#1c4dbb", "#d7262e", "#ffd400"], "fall": ["#f26b21", "#111111", "#6c2d91", "#f26b21", "#111111"], "winter": ["#c8102e", "#0b6e3a", "#f2f2f2", "#d4a017", "#c8102e"] }  # x, z on the counter; the colours, October's, December's
+const BULBS := { "every": 0.22, "colors": ["#ff2a1a", "#16c13a", "#1f5cff", "#ffae1a", "#fff0d0"], "bright": 1.15, "twinkle": 0.12 }  # along the string: how far apart, the colours in turn, how bright (over white: they bloom), how many twinkle
+const TREE := { "at": [-2.0, 3.38], "h": 0.62, "r": 0.2, "bulbs": 28 }  # on the counter's raised front, where October's pumpkins go
 const PUMPKINS := [[-2.0, 3.55, 0.12], [-2.0, 3.2, 0.085]]  # x, z, radius: on the counter's raised front, faces to the store
 const BUNTING := { "z": 0.4, "y": 3.25, "x": [-7.5, 10.8], "span": 3.0, "sag": 0.18, "flag": Vector2(0.17, 0.22), "every": 0.24 }
 const SHINE := 0.6  # the balloons' gloss (room.gd's: the ceiling's panels in them, a glint of the lamps; a tape's sleeve is 0.3)
@@ -29,6 +32,7 @@ var _tie := Vector3.ZERO  # where the strings come together, on the weight
 var _ball := SphereShape3D.new()  # (a balloon, as the level feels it: _bump)
 var _candles: Array = []  # [the light out of its face, the glow inside, the shell (its cut edges glowing), the cuts' walls]
 var _faces := {}
+var _twinkle: Array = []  # [the bulbs (a MultiMesh), their colours, which ones twinkle]
 var _t := 0.0
 
 
@@ -36,7 +40,8 @@ static func season() -> String:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--season="):
 			return a.trim_prefix("--season=")
-	return "halloween" if Time.get_date_dict_from_system().month == 10 else ""
+	var month: int = Time.get_date_dict_from_system().month
+	return "halloween" if month == 10 else "christmas" if month == 12 else ""
 
 
 func _ready() -> void:
@@ -46,7 +51,11 @@ func _ready() -> void:
 		await get_tree().physics_frame  # (the level's solid by then: main.gd. What stands on the counter is dropped onto it)
 		await get_tree().physics_frame
 	var fall := season() == "halloween"
-	_balloons(BALLOONS.fall if fall else BALLOONS.colors)
+	var winter := season() == "christmas"
+	_balloons(BALLOONS.fall if fall else BALLOONS.winter if winter else BALLOONS.colors)
+	if winter:
+		_string_lights()
+		_tree(_rest(TREE.at[0], TREE.at[1], TREE.r * 0.6))
 	if fall:
 		for p: Array in PUMPKINS:
 			_pumpkin(_rest(p[0], p[1], p[2] * 0.6), p[2])
@@ -72,6 +81,11 @@ func _ready() -> void:
 func _process(dt: float) -> void:
 	_t += dt
 	_float(minf(dt, 1.0 / 30.0))
+	for tw: Array in _twinkle:  # (most steady; a few fading down and up, each in its own time)
+		var mm: MultiMesh = tw[0]
+		for i: int in tw[2]:
+			var k := 0.55 + 0.45 * cos(_t * (1.3 + 0.37 * (i % 5)) + i * 2.1)
+			mm.set_instance_color(i, tw[1][i] * k)
 	for c: Array in _candles:  # (guttering: each its own)
 		var f := 1.0 + 0.22 * sin(_t * 9.0 + c[0].global_position.z * 10.0) + 0.16 * (randf() - 0.5)
 		c[0].light_energy = 0.35 * f
@@ -452,6 +466,99 @@ func _bunting() -> void:  # pennants on a sagging string along the storefront, i
 		var a := Vector3(x0 + k * 0.1, _sag(x0 + k * 0.1), BUNTING.z)
 		var b := Vector3(x0 + (k + 1) * 0.1, _sag(x0 + (k + 1) * 0.1), BUNTING.z)
 		_put(_box(Vector3(0.1, 0.004, 0.004)), _mat(Color("#cccccc")), Transform3D(Basis(Vector3.BACK, atan2(b.y - a.y, b.x - a.x)), (a + b) / 2.0))
+
+
+func _bulbs(at: Array, basis: Basis, size: Vector3) -> void:  # lit bulbs (unlit: they're the light), one MultiMesh, each its colour in turn; a few to twinkle
+	var bulb := SphereMesh.new()
+	bulb.radius = size.x
+	bulb.height = size.y
+	bulb.radial_segments = 8
+	bulb.rings = 4
+	var m := _mat(Color.WHITE, true)
+	m.vertex_color_use_as_albedo = true
+	m.vertex_color_is_srgb = true  # (the colours as written: taken as linear, they wash out pale)
+	bulb.material = m
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_colors = true
+	mm.mesh = bulb
+	mm.instance_count = at.size()
+	var colors := []
+	var tw: Array[int] = []
+	for i in at.size():
+		mm.set_instance_transform(i, Transform3D(basis, at[i]))
+		var c: Color = Color(BULBS.colors[i % BULBS.colors.size()]) * BULBS.bright
+		c.a = 1.0
+		colors.append(c)
+		mm.set_instance_color(i, c)
+		if randf() < BULBS.twinkle:
+			tw.append(i)
+	var mi := MultiMeshInstance3D.new()
+	mi.multimesh = mm
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mi)
+	_twinkle.append([mm, colors, tw])
+
+
+func _string_lights() -> void:  # big old bulbs hanging off a green wire along the storefront, inside the glass, where October's bunting goes
+	var wire := SurfaceTool.new()  # (one mesh: short pieces along the sag)
+	wire.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var x0: float = BUNTING.x[0]
+	var x1: float = BUNTING.x[1]
+	var steps := int((x1 - x0) / 0.1)
+	for k in steps:
+		var a := Vector3(x0 + k * 0.1, _sag(x0 + k * 0.1), BUNTING.z)
+		var b := Vector3(x0 + (k + 1) * 0.1, _sag(x0 + (k + 1) * 0.1), BUNTING.z)
+		var piece := BoxMesh.new()
+		piece.size = Vector3(0.1, 0.006, 0.006)
+		wire.append_from(piece, 0, Transform3D(Basis(Vector3.BACK, atan2(b.y - a.y, b.x - a.x)), (a + b) / 2.0))
+	wire.set_material(_mat(Color("#1d3b22")))
+	var wm := MeshInstance3D.new()
+	wm.mesh = wire.commit()
+	add_child(wm)
+	var at := []
+	var x := x0 + BULBS.every / 2.0
+	while x < x1:
+		at.append(Vector3(x, _sag(x) - 0.03, BUNTING.z))
+		x += BULBS.every
+	_bulbs(at, Basis.IDENTITY, Vector3(0.016, 0.042, 0))
+
+
+func _tree(at: Vector3) -> void:  # a tabletop one: three tiers on a stubby trunk, a gold star, its lights round it in a spiral
+	var green := _mat(Color("#1f5a2c"))
+	var trunk := CylinderMesh.new()
+	trunk.top_radius = 0.025
+	trunk.bottom_radius = 0.03
+	trunk.height = 0.08
+	_put(trunk, _mat(Color("#5a3b22")), Transform3D(Basis.IDENTITY, at + Vector3(0, 0.04, 0)))
+	var h: float = TREE.h
+	var r: float = TREE.r
+	for tier in 3:  # (each narrower and up, over the one below)
+		var c := CylinderMesh.new()
+		c.top_radius = 0.0
+		c.bottom_radius = r * (1.0 - tier * 0.25)
+		c.height = h * 0.45
+		c.radial_segments = 14
+		_put(c, green, Transform3D(Basis.IDENTITY, at + Vector3(0, 0.08 + h * (0.2 + tier * 0.25), 0)))
+	var star := SphereMesh.new()
+	star.radius = 0.028
+	star.height = 0.05
+	star.radial_segments = 5
+	star.rings = 2
+	_put(star, _mat(Color(1.6, 1.25, 0.4), true), Transform3D(Basis.IDENTITY, at + Vector3(0, 0.08 + h * 0.95, 0)))
+	var spots := []
+	for i in TREE.bulbs:  # (round and up: on the cones' faces, a little out from them)
+		var t := float(i) / TREE.bulbs
+		var y := 0.1 + h * 0.85 * t
+		var rad := 0.0  # (the outermost of the tiers there: the one you'd see)
+		for tier in 3:
+			var base: float = 0.08 + h * (0.2 + tier * 0.25) - h * 0.225
+			if y >= base and y <= base + h * 0.45:
+				rad = maxf(rad, r * (1.0 - tier * 0.25) * (1.0 - (y - base) / (h * 0.45)))
+		rad += 0.008
+		var a := t * TAU * 4.5
+		spots.append(at + Vector3(cos(a) * rad, y, sin(a) * rad))
+	_bulbs(spots, Basis.IDENTITY, Vector3(0.009, 0.018, 0))
 
 
 func _sag(x: float) -> float:  # pinned up every span, hanging between
