@@ -143,3 +143,14 @@ on brackets, angled down at the seats, their grilles), and a ceiling of pin ligh
 | ![](theater/back_before.png) | ![](theater/back_after.png) |
 | ![](theater/wall_before.png) | ![](theater/wall_after.png) |
 | ![](theater/rear_before.png) | ![](theater/rear_after.png) |
+
+## The lounge (`lounge`)
+
+Already the most furnished corner of the floor; its preview TV stood alone against the wall. Now a speaker either side of
+it on its stand (woofer, tweeter), a fig in a pot in the corner, tapes stacked on the coffee table and the remote by them.
+
+| Before | After |
+|---|---|
+| ![](lounge/tv_before.png) | ![](lounge/tv_after.png) |
+| ![](lounge/side_before.png) | ![](lounge/side_after.png) |
+| ![](lounge/table_before.png) | ![](lounge/table_after.png) |

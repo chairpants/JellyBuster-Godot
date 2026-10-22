@@ -51,6 +51,8 @@ extends SceneTree
 ##   gold band, its top overhanging; a popcorn machine on it, a soda fountain beside its candy case
 ## auditorium: the auditorium's black void over its wall panels filled: a gold cap rail along the panels' tops, the
 ##   surround speakers up the side walls (cabinets angled down, their grilles), and a ceiling of pin lights, one mesh
+## lounge: the preview corner furnished round its TV: a speaker either side on its stand, a potted fig in the corner,
+##   tapes stacked on the coffee table and the remote by them
 ## restroom: the floors either side of the wall between the restroom and the break room meeting under it, square (boh
 ##   moved that wall over, but only the floors' far corners with it: a wedge of the break room's floor in the restroom).
 ##
@@ -156,6 +158,8 @@ func _init() -> void:
 				quit(1)
 				return
 			_auditorium()
+		"lounge":
+			_lounge()
 		"railings":
 			if not "theater" in done:
 				push_error("remodel: railings go after theater")
@@ -188,7 +192,7 @@ func _init() -> void:
 	var err := packed.pack(w)
 	if err == OK:
 		err = ResourceSaver.save(packed, WORLD, ResourceSaver.FLAG_COMPRESS)  # (as it came: compressed)
-	if not section in ["strip", "restroom", "railings", "hall", "roof", "closet", "stairwell", "breakroom", "aisles", "lavatory", "booth", "outside", "foyer", "auditorium"]:  # (the level only: the data's as it was)
+	if not section in ["strip", "restroom", "railings", "hall", "roof", "closet", "stairwell", "breakroom", "aisles", "lavatory", "booth", "outside", "foyer", "auditorium", "lounge"]:  # (the level only: the data's as it was)
 		var f := FileAccess.open(DATA, FileAccess.WRITE)
 		f.store_string(_json(data))
 		f.close()
@@ -835,6 +839,50 @@ func _auditorium() -> void:
 	_node("theater").add_child(lights, true)
 	lights.owner = w
 	lights.set_meta("glow", "theater")
+
+
+func _lounge() -> void:
+	var wood := Color("4a3424")
+	for x: float in [-1.55, 1.55]:  # the speakers: a stand, a cabinet, its woofer and tweeter to the couch (-z)
+		var c := Vector3(x, 0.0, 26.85)
+		block("store", "speaker stand foot", c + Vector3(-0.15, 0, -0.15), c + Vector3(0.15, 0.03, 0.15), Color("1d1f22"))
+		block("store", "speaker stand", c + Vector3(-0.03, 0.03, -0.03), c + Vector3(0.03, 0.62, 0.03), Color("1d1f22"))
+		block("store", "speaker stand top", c + Vector3(-0.12, 0.62, -0.12), c + Vector3(0.12, 0.64, 0.12), Color("1d1f22"))
+		block("store", "speaker", c + Vector3(-0.13, 0.64, -0.14), c + Vector3(0.13, 1.06, 0.14), wood)
+		block("store", "speaker baffle", c + Vector3(-0.12, 0.65, -0.145), c + Vector3(0.12, 1.05, -0.14), Color("1d1f22"))
+		cylinder("store", "woofer", c + Vector3(0, 0.78, -0.15), 0.08, 0.012, Vector3.FORWARD, Color("2e2f33"))
+		cylinder("store", "woofer cap", c + Vector3(0, 0.78, -0.157), 0.025, 0.006, Vector3.FORWARD, Color("4a4d52"))
+		cylinder("store", "tweeter", c + Vector3(0, 0.97, -0.15), 0.025, 0.012, Vector3.FORWARD, Color("8f9398"))
+	# a fig in a pot in the corner: the pot, its soil, a trunk, a crown of leaf clusters
+	var f := Vector3(-2.8, 0.0, 27.4)
+	var pot := CylinderMesh.new()
+	pot.top_radius = 0.24
+	pot.bottom_radius = 0.18
+	pot.height = 0.42
+	pot.radial_segments = 16
+	pot.material = _mat(Color("8a4b2c"))
+	_add("store", "plant pot", pot).global_position = f + Vector3(0, 0.21, 0)
+	cylinder("store", "plant soil", f + Vector3(0, 0.4, 0), 0.22, 0.02, Vector3.UP, Color("2b2018"))
+	bar("store", "plant trunk", f + Vector3(0, 0.4, 0), f + Vector3(0.05, 1.5, 0.03), Vector2(0.035, 0.035), Color("5a4330"))
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 4
+	for k in 9:
+		var leaf := SphereMesh.new()
+		leaf.radius = rng.randf_range(0.16, 0.24)
+		leaf.height = leaf.radius * 1.4
+		leaf.radial_segments = 8
+		leaf.rings = 4
+		leaf.material = _mat(Color(0.16 + rng.randf() * 0.06, 0.36 + rng.randf() * 0.1, 0.14))
+		_add("store", "plant leaves", leaf).global_position = f + Vector3(rng.randf_range(-0.28, 0.28), rng.randf_range(1.15, 1.75), rng.randf_range(-0.28, 0.28))
+	# on the coffee table: three tapes stacked, the remote beside them
+	var t := Vector3(-0.2, 0.35, 24.95)
+	for k in 3:
+		block("store", "tape on the table", t + Vector3(-0.095, k * 0.026, -0.055), t + Vector3(0.095, k * 0.026 + 0.025, 0.055), [Color("1a1a1c"), Color("2b2d30"), Color("1a1a1c")][k])
+		block("store", "tape label", t + Vector3(-0.07, k * 0.026 + 0.0255, -0.035), t + Vector3(0.07, k * 0.026 + 0.026, 0.035), Color("e6e2d6"))
+	var r := Vector3(0.2, 0.35, 24.9)
+	block("store", "remote", r + Vector3(-0.025, 0, -0.09), r + Vector3(0.025, 0.02, 0.09), Color("232427"))
+	for k in 5:
+		block("store", "remote button", r + Vector3(-0.012, 0.02, -0.06 + k * 0.03), r + Vector3(0.012, 0.024, -0.05 + k * 0.03), Color("8f9398") if k else Color("c8102e"))
 
 
 const HALL := { "x": [2.0, 9.4], "z": [28.1, 29.7], "base": Color("2e2f31"), "door": Color("d4d6d8"), "trim": Color("bfc3c7"), "steel": Color("b8bcc0"), "cork": Color("b0875a"), "red": Color("c8102e") }
