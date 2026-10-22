@@ -154,3 +154,16 @@ it on its stand (woofer, tweeter), a fig in a pot in the corner, tapes stacked o
 | ![](lounge/tv_before.png) | ![](lounge/tv_after.png) |
 | ![](lounge/side_before.png) | ![](lounge/side_after.png) |
 | ![](lounge/table_before.png) | ![](lounge/table_after.png) |
+
+## The front of the store (`front`)
+
+The most finished part of the store already (the counter, the returns box, the cooler, the gates). The way in given an
+entry mat (the store's blue and yellow round a ribbed middle), and the glass either side of the doors vinyl lettering to
+the street: NEW RELEASES EVERY TUESDAY, the hours, the drop box round the side. (The lit poster frames are empty only in
+the demo, which has no pictures: with a server they carry the library's own covers.)
+
+| Before | After |
+|---|---|
+| ![](front/street_before.png) | ![](front/street_after.png) |
+| ![](front/mat_before.png) | ![](front/mat_after.png) |
+| ![](front/entry_before.png) | ![](front/entry_after.png) |

@@ -53,6 +53,8 @@ extends SceneTree
 ##   surround speakers up the side walls (cabinets angled down, their grilles), and a ceiling of pin lights, one mesh
 ## lounge: the preview corner furnished round its TV: a speaker either side on its stand, a potted fig in the corner,
 ##   tapes stacked on the coffee table and the remote by them
+## front: the way in: a ribbed entry mat inside the doors, its border the store's blue and yellow; on the glass either
+##   side of them, vinyl lettering to the street (NEW RELEASES EVERY TUESDAY, the hours, the drop box round the side)
 ## restroom: the floors either side of the wall between the restroom and the break room meeting under it, square (boh
 ##   moved that wall over, but only the floors' far corners with it: a wedge of the break room's floor in the restroom).
 ##
@@ -160,6 +162,8 @@ func _init() -> void:
 			_auditorium()
 		"lounge":
 			_lounge()
+		"front":
+			_front()
 		"railings":
 			if not "theater" in done:
 				push_error("remodel: railings go after theater")
@@ -192,7 +196,7 @@ func _init() -> void:
 	var err := packed.pack(w)
 	if err == OK:
 		err = ResourceSaver.save(packed, WORLD, ResourceSaver.FLAG_COMPRESS)  # (as it came: compressed)
-	if not section in ["strip", "restroom", "railings", "hall", "roof", "closet", "stairwell", "breakroom", "aisles", "lavatory", "booth", "outside", "foyer", "auditorium", "lounge"]:  # (the level only: the data's as it was)
+	if not section in ["strip", "restroom", "railings", "hall", "roof", "closet", "stairwell", "breakroom", "aisles", "lavatory", "booth", "outside", "foyer", "auditorium", "lounge", "front"]:  # (the level only: the data's as it was)
 		var f := FileAccess.open(DATA, FileAccess.WRITE)
 		f.store_string(_json(data))
 		f.close()
@@ -883,6 +887,36 @@ func _lounge() -> void:
 	block("store", "remote", r + Vector3(-0.025, 0, -0.09), r + Vector3(0.025, 0.02, 0.09), Color("232427"))
 	for k in 5:
 		block("store", "remote button", r + Vector3(-0.012, 0.02, -0.06 + k * 0.03), r + Vector3(0.012, 0.024, -0.05 + k * 0.03), Color("8f9398") if k else Color("c8102e"))
+
+
+func _front() -> void:
+	# the mat: a blue border, a yellow line inside it, the ribbed middle
+	var m0 := Vector3(-1.6, 0.003, 0.3)
+	var m1 := Vector3(1.6, 0.003, 1.9)
+	block("store", "entry mat", m0, m1 + Vector3(0, 0.01, 0), Color("1c3d8f"))
+	block("store", "entry mat line", m0 + Vector3(0.1, 0.01, 0.1), m1 + Vector3(-0.1, 0.0115, -0.1), Color("f2c200"))
+	block("store", "entry mat field", m0 + Vector3(0.14, 0.0115, 0.14), m1 + Vector3(-0.14, 0.013, -0.14), Color("2b2d30"))
+	var x: float = m0.x + 0.18
+	while x < m1.x - 0.16:
+		block("store", "entry mat rib", Vector3(x, 0.013, m0.z + 0.16), Vector3(x + 0.025, 0.016, m1.z - 0.16), Color("3a3d42"))
+		x += 0.06
+	# lettering on the glass, to the street (from in here, backwards, as it is)
+	for v: Array in [["NEW RELEASES\nEVERY TUESDAY", Vector3(-3.25, 1.95, -0.003), 0.0034, Color("f2c200")],
+			["OPEN 7 DAYS\n10 AM - MIDNIGHT", Vector3(3.25, 1.95, -0.003), 0.0031, Color(0.96, 0.96, 0.94)],
+			["RETURNS? DROP BOX\nROUND THE SIDE >", Vector3(3.25, 1.25, -0.003), 0.0024, Color(0.96, 0.96, 0.94)]]:
+		var lab := Label3D.new()
+		lab.name = "window lettering"
+		lab.text = v[0]
+		lab.font_size = 64
+		lab.outline_size = 0
+		lab.pixel_size = v[2]
+		lab.modulate = v[3]
+		lab.shaded = true
+		lab.double_sided = true
+		lab.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_node("store").add_child(lab, true)
+		lab.owner = w
+		lab.global_transform = Transform3D(Basis(Vector3.UP, PI), v[1])
 
 
 const HALL := { "x": [2.0, 9.4], "z": [28.1, 29.7], "base": Color("2e2f31"), "door": Color("d4d6d8"), "trim": Color("bfc3c7"), "steel": Color("b8bcc0"), "cork": Color("b0875a"), "red": Color("c8102e") }
