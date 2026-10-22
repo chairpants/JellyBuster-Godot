@@ -50,3 +50,16 @@ the rails on brackets; a grip strip on every tread; BOOTH and the way, stencille
 | ![](stairwell/foot_before.png) | ![](stairwell/foot_after.png) |
 | ![](stairwell/landing_before.png) | ![](stairwell/landing_after.png) |
 | ![](stairwell/top_before.png) | ![](stairwell/top_after.png) |
+
+## The break room (`breakroom`)
+
+Already well furnished; what was wrong with it: the tall block's base course ran on along its side through the wall, a
+grey kerb along the room's west wall (now it stops where the back rooms do). The table's top banded in chrome. A
+microwave on its cart in the corner (door, window, keypad, handle; plates and a roll of towels under it).
+
+| Before | After |
+|---|---|
+| ![](breakroom/cart_before.png) | ![](breakroom/cart_after.png) |
+| ![](breakroom/bench_before.png) | ![](breakroom/bench_after.png) |
+| ![](breakroom/door_before.png) | ![](breakroom/door_after.png) |
+| ![](breakroom/kitchen_before.png) | ![](breakroom/kitchen_after.png) |

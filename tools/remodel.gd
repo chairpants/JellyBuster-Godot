@@ -30,6 +30,9 @@ extends SceneTree
 ##   the wringer on its end and the press's lever up, on casters; the safety sheets' station on the wall by the shelves
 ## stairwell: the stairs up to the booth less bare: its walls block, coursed and pointed (laid over them, clear of the door
 ##   and the way out); the rails on brackets; a grip strip on every tread; BOOTH and the way, stencilled on the landing's wall
+## breakroom: the tall block's base course out of the break room (it ran on along the block's side, through the wall,
+##   where the back rooms meet it: a grey kerb along the room's west wall); the table's top banded in chrome; a microwave on
+##   its cart in the corner by the west wall, its door, window, keypad and handle, plates and a roll of towels under it
 ## restroom: the floors either side of the wall between the restroom and the break room meeting under it, square (boh
 ##   moved that wall over, but only the floors' far corners with it: a wedge of the break room's floor in the restroom).
 ##
@@ -97,6 +100,12 @@ func _init() -> void:
 				quit(1)
 				return
 			_stairwell()
+		"breakroom":
+			if not "theater" in done:
+				push_error("remodel: breakroom goes after theater")
+				quit(1)
+				return
+			_breakroom()
 		"railings":
 			if not "theater" in done:
 				push_error("remodel: railings go after theater")
@@ -129,7 +138,7 @@ func _init() -> void:
 	var err := packed.pack(w)
 	if err == OK:
 		err = ResourceSaver.save(packed, WORLD, ResourceSaver.FLAG_COMPRESS)  # (as it came: compressed)
-	if not section in ["strip", "restroom", "railings", "hall", "roof", "closet", "stairwell"]:  # (the level only: the data's as it was)
+	if not section in ["strip", "restroom", "railings", "hall", "roof", "closet", "stairwell", "breakroom"]:  # (the level only: the data's as it was)
 		var f := FileAccess.open(DATA, FileAccess.WRITE)
 		f.store_string(_json(data))
 		f.close()
@@ -340,6 +349,46 @@ static func _blockwork() -> Image:  # concrete block, 40 by 20, half-bond: two b
 			img.set_pixel(x, y, Color(g * 0.98, g, g * 1.04))
 	img.generate_mipmaps()
 	return img
+
+
+func _breakroom() -> void:
+	# the base course: outside from where the back rooms end, not through them
+	_extend(_node("out/group of 68/box 13_86 x 0_50 x 0_16"), Vector3.AXIS_Z, -1, 35.1)
+	# the table: a chrome band round its top's edge
+	var top := _bounds(_node("boh/box 1_20 x 0_03 x 0_80"))
+	var y0 := top.position.y - 0.012
+	var y1 := top.end.y + 0.004
+	var chrome := Color("c8ccd0")
+	for e: Array in [[top.position.x - 0.008, top.position.z - 0.008, top.end.x + 0.008, top.position.z], [top.position.x - 0.008, top.end.z, top.end.x + 0.008, top.end.z + 0.008],
+			[top.position.x - 0.008, top.position.z, top.position.x, top.end.z], [top.end.x, top.position.z, top.end.x + 0.008, top.end.z]]:
+		block("boh", "table edge", Vector3(e[0], y0, e[1]), Vector3(e[2], y1, e[3]), chrome)
+	# the microwave on its cart, in the corner by the west wall
+	var c := Vector3(2.66, 0.0, 34.6)  # (the cart's middle, on the floor)
+	var steel := Color("9aa0a6")
+	var hw := 0.29
+	var hd := 0.22
+	for y: float in [0.16, 0.74]:
+		block("boh", "cart shelf", c + Vector3(-hw, y, -hd), c + Vector3(hw, y + 0.025, hd), steel)
+		block("boh", "cart lip", c + Vector3(-hw, y + 0.025, -hd), c + Vector3(hw, y + 0.045, -hd + 0.01), steel)
+	for k: Vector2 in [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)]:
+		var leg := c + Vector3(k.x * (hw - 0.02), 0, k.y * (hd - 0.02))
+		block("boh", "cart post", leg + Vector3(-0.012, 0.07, -0.012), leg + Vector3(0.012, 0.79, 0.012), steel)
+		cylinder("boh", "cart caster", leg + Vector3(0, 0.035, 0), 0.032, 0.022, Vector3.RIGHT, Color("1d1f22"))
+	var m := c + Vector3(0, 0.765, 0.02)  # the microwave: on the top shelf, its door to the room (-z)
+	var body := Color("e7e2d4")
+	block("boh", "microwave", m + Vector3(-0.25, 0, -0.17), m + Vector3(0.25, 0.29, 0.19), body)
+	block("boh", "microwave door", m + Vector3(-0.235, 0.02, -0.176), m + Vector3(0.1, 0.27, -0.17), Color("2a2c2f"))
+	block("boh", "microwave window", m + Vector3(-0.2, 0.05, -0.178), m + Vector3(0.05, 0.24, -0.176), Color("4b4f45"))
+	block("boh", "microwave handle", m + Vector3(0.07, 0.06, -0.19), m + Vector3(0.085, 0.23, -0.176), Color("c8ccd0"))
+	block("boh", "microwave panel", m + Vector3(0.11, 0.02, -0.174), m + Vector3(0.235, 0.27, -0.17), Color("cfcabd"))
+	block("boh", "microwave clock", m + Vector3(0.13, 0.22, -0.177), m + Vector3(0.215, 0.25, -0.174), Color("1c2a1c"))
+	for row in 4:
+		for col in 3:
+			block("boh", "microwave key", m + Vector3(0.13 + col * 0.03, 0.06 + row * 0.035, -0.176), m + Vector3(0.15 + col * 0.03, 0.08 + row * 0.035, -0.173), Color("9a968b"))
+	block("boh", "microwave vent", m + Vector3(0.12, 0.29, -0.1), m + Vector3(0.22, 0.292, 0.12), Color("b9b4a6"))
+	# under it: paper plates and a roll of towels
+	cylinder("boh", "paper plates", c + Vector3(-0.12, 0.215, 0.0), 0.12, 0.05, Vector3.UP, Color("f4f1e8"))
+	cylinder("boh", "towel roll", c + Vector3(0.14, 0.24, 0.0), 0.06, 0.2, Vector3.FORWARD, Color("f4f1e8"))
 
 
 const HALL := { "x": [2.0, 9.4], "z": [28.1, 29.7], "base": Color("2e2f31"), "door": Color("d4d6d8"), "trim": Color("bfc3c7"), "steel": Color("b8bcc0"), "cork": Color("b0875a"), "red": Color("c8102e") }
