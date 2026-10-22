@@ -15,6 +15,7 @@
 [ext_resource type="Script" uid="uid://b81nfxnr5ehr6" path="res://room.gd" id="11"]
 [ext_resource type="Script" uid="uid://chy3ahkvis33n" path="res://things.gd" id="12"]
 [ext_resource type="Script" uid="uid://sseqgvputd6s" path="res://weather.gd" id="13"]
+[ext_resource type="Script" uid="uid://b1j28od6kt1xu" path="res://decor.gd" id="16"]
 
 [sub_resource type="ProceduralSkyMaterial" id="sky_mat"]
 sky_top_color = Color(0.25, 0.45, 0.8, 1)
@@ -96,3 +97,5 @@ script = ExtResource("12")
 [node name="Weather" type="Node3D" parent="." unique_id=127855003]
 script = ExtResource("13")
 
+[node name="Decor" type="Node3D" parent="."]
+script = ExtResource("16")

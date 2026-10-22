@@ -1,8 +1,11 @@
+@tool
 extends Node3D
 ## What a store puts up that isn't stock: a bunch of balloons at the counter's end, all year; and through October,
 ## Halloween: jack-o'-lanterns on the counter (a candle in each, guttering), orange and black bunting along the windows,
 ## cobwebs up in the sales floor's corners. By the computer's date (--season=halloween, or =none, to see it otherwise).
 ## All lit by the room's light like the rest (room.gd), but the pumpkins' insides, which glow through their cut faces.
+## In the editor too (main.tscn has it), standing still: what's on the counter put down on the level's own triangles, there
+## being nothing solid yet (main.gd makes the level solid as the game starts), and lit as it comes.
 
 const COUNTER_Y := 1.1  # the returns counter's top, if nothing's found there (_on_top)
 const BALLOONS := { "at": [-2.3, 1.4], "colors": ["#d7262e", "#ffd400", "#1c4dbb", "#d7262e", "#ffd400"], "fall": ["#f26b21", "#111111", "#6c2d91", "#f26b21", "#111111"] }  # x, z on the counter; the colours, and October's
@@ -36,19 +39,28 @@ static func season() -> String:
 
 
 func _ready() -> void:
-	await get_tree().physics_frame  # (the level's solid by then: main.gd. What stands on the counter is dropped onto it)
-	await get_tree().physics_frame
+	if Engine.is_editor_hint():
+		set_process(false)  # (standing still)
+	else:
+		await get_tree().physics_frame  # (the level's solid by then: main.gd. What stands on the counter is dropped onto it)
+		await get_tree().physics_frame
 	var fall := season() == "halloween"
 	_balloons(BALLOONS.fall if fall else BALLOONS.colors)
 	if fall:
 		for p: Array in PUMPKINS:
 			_pumpkin(_rest(p[0], p[1], p[2] * 0.6), p[2])
 		_bunting()
-		var f: Array = Level.data().lights.boxes.floor  # x0, x1, back wall z, ceiling
+		var level: Node = get_node_or_null("/root/Level")  # (the autoload: as deep as the library made the store. Not there in the editor: one as deep as VaultBuster's, as the editor's level is)
+		var own := level == null
+		if own:
+			level = preload("res://level.gd").new()
+		var f: Array = level.data().lights.boxes.floor  # x0, x1, back wall z, ceiling
+		if own:
+			level.free()
 		for c: Array in [[f[0], 0.05, 1, 1], [f[1], 0.05, -1, 1], [f[0], f[2], 1, -1], [f[1], f[2], -1, -1]]:  # [x, z, which way's in along x, along z]
 			_cobweb(Vector3(c[0], f[3], c[1]), c[2], c[3])
 	var room := get_node_or_null("../Room")
-	if room != null:
+	if room != null and not Engine.is_editor_hint():
 		room.light(self)
 		for mi in _shiny:
 			var m: Material = mi.mesh.surface_get_material(0)
@@ -117,8 +129,28 @@ func _put(prim: PrimitiveMesh, m: Material, xf: Transform3D, parent: Node3D = se
 
 
 func _on_top(x: float, z: float) -> Vector3:  # whatever's there, from above: the counter's top
+	if Engine.is_editor_hint():
+		return Vector3(x, _top_of_level(x, z), z)
 	var hit := get_world_3d().direct_space_state.intersect_ray(PhysicsRayQueryParameters3D.create(Vector3(x, 2.5, z), Vector3(x, 0.0, z)))
 	return Vector3(x, hit.position.y if hit else COUNTER_Y, z)
+
+
+func _top_of_level(x: float, z: float) -> float:  # (the editor's: down onto the level's own triangles, the highest under 2.5 m. Only what's small enough to be furniture: not the building's shell, whose box covers everything)
+	var world := get_node_or_null("../World") as Node3D
+	var top := -INF
+	if world:
+		for m: MeshInstance3D in world.find_children("*", "MeshInstance3D", true, false):
+			if m.mesh == null:
+				continue
+			var b := m.global_transform * m.get_aabb()
+			if x < b.position.x or x > b.end.x or z < b.position.z or z > b.end.z or b.position.y > 2.5 or b.end.y < 0.3 or b.size.x > 20.0 or b.size.z > 20.0:
+				continue
+			var faces := m.mesh.get_faces()
+			for i in range(0, faces.size(), 3):
+				var p = Geometry3D.ray_intersects_triangle(Vector3(x, 2.5, z), Vector3.DOWN, m.global_transform * faces[i], m.global_transform * faces[i + 1], m.global_transform * faces[i + 2])
+				if p != null and p.y < 2.5:
+					top = maxf(top, p.y)
+	return top if top > -INF else COUNTER_Y
 
 
 func _rest(x: float, z: float, r: float) -> Vector3:  # on the highest of what's under that much round there: the counter steps up under them (a lip, then the raised front)
