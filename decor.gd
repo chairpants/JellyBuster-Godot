@@ -465,11 +465,17 @@ func _bunting() -> void:  # pennants on a sagging string along the storefront, i
 	var mi := MeshInstance3D.new()
 	mi.mesh = st.commit()
 	add_child(mi)
-	var steps := int((x1 - x0) / 0.1)  # the string: short straight pieces along the sag
+	var string := SurfaceTool.new()  # the string: short straight pieces along the sag (one mesh: a piece each, it was a draw each)
+	string.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var steps := int((x1 - x0) / 0.1)
 	for k in steps:
 		var a := Vector3(x0 + k * 0.1, _sag(x0 + k * 0.1), BUNTING.z)
 		var b := Vector3(x0 + (k + 1) * 0.1, _sag(x0 + (k + 1) * 0.1), BUNTING.z)
-		_put(_box(Vector3(0.1, 0.004, 0.004)), _mat(Color("#cccccc")), Transform3D(Basis(Vector3.BACK, atan2(b.y - a.y, b.x - a.x)), (a + b) / 2.0))
+		string.append_from(_box(Vector3(0.1, 0.004, 0.004)), 0, Transform3D(Basis(Vector3.BACK, atan2(b.y - a.y, b.x - a.x)), (a + b) / 2.0))
+	string.set_material(_mat(Color("#cccccc")))
+	var sm := MeshInstance3D.new()
+	sm.mesh = string.commit()
+	add_child(sm)
 
 
 func _bulbs(at: Array, basis: Basis, size: Vector3) -> void:  # lit bulbs (unlit: they're the light), one MultiMesh, each its colour in turn; a few to twinkle

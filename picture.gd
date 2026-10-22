@@ -120,6 +120,7 @@ const CANVAS := "shader_type canvas_item;\n" + PIC + "void fragment() { COLOR.rg
 
 var tv := DEFAULTS.duplicate()
 var _mats: Array[ShaderMaterial] = []
+var _shaders := {}  # spatial? -> its shader
 var _panel := PanelContainer.new()
 var _rows := {}  # key -> its slider or toggle
 
@@ -204,8 +205,10 @@ func _ready() -> void:
 
 func material(spatial: bool) -> ShaderMaterial:  # one for each screen (and the full-screen picture): kept in step with the settings
 	var m := ShaderMaterial.new()
-	m.shader = Shader.new()
-	m.shader.code = SPATIAL if spatial else CANVAS
+	if not _shaders.has(spatial):  # (the shader itself, the one for all: compiled once, not once a screen)
+		_shaders[spatial] = Shader.new()
+		_shaders[spatial].code = SPATIAL if spatial else CANVAS
+	m.shader = _shaders[spatial]
 	_mats.append(m)
 	_apply()
 	return m
