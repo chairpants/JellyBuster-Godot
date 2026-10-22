@@ -750,7 +750,7 @@ func _resume() -> void:  # what was in the VCR when the game last closed: off it
 				t.at = cf.get_value("vcr", "at", 0.0)
 				set_on_shelf(t, false)
 				video.audio.position = cf.get_value("vcr", "speaker", Vector3.ZERO)
-				video.audio.unit_size = cf.get_value("vcr", "reach", 3.0)
+				video.audio.unit_size = cf.get_value("vcr", "reach", 4.8)
 				_speaker(video.audio.unit_size > 5.0)
 				play_episode(i, t)
 				print("tapes: %s back in the VCR, from %s" % [t.e[i][1], _clock(t.at)])
@@ -1071,4 +1071,4 @@ func eject() -> void:
 
 
 func _speaker(theater: bool) -> void:  # as VaultBusterGodot plays it: from the screen, the theater's speakers louder and further
-	video.audio.unit_size = 8.0 if theater else 3.0  # (kept: the resume file tells them apart by it, over 5 the theater)
+	video.audio.unit_size = 8.0 if theater else 4.8  # (a TV heard clear across its aisle. Kept: the resume file tells them apart by it, over 5 the theater)

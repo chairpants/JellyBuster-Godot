@@ -31,8 +31,9 @@ void fragment() {
 	float m = smoothstep(-0.012, 0.025, pu.x + n) * (1.0 - smoothstep(0.975, 1.012, pu.x - n)) * smoothstep(-0.012, 0.03, pu.y - n) * (1.0 - smoothstep(0.97, 1.012, pu.y + n));
 	vec2 q = pu - 0.5;
 	float hot = 1.05 - 0.55 * dot(q, q) * 4.0;
-	vec2 c = clamp(vec2(pu.x, 1.0 - pu.y), 0.0, 1.0), px = vec2(1.6 / 528.0, 1.6 / 352.0);   // (a little soft: four taps round the one)
-	vec3 vid = (texture(uVid, c).rgb * 2.0 + texture(uVid, c + px * vec2(1.0, 0.0)).rgb + texture(uVid, c - px * vec2(1.0, 0.0)).rgb + texture(uVid, c + px * vec2(0.0, 1.0)).rgb + texture(uVid, c - px * vec2(0.0, 1.0)).rgb) / 6.0;
+	vec2 c = clamp(vec2(pu.x, 1.0 - pu.y), 0.0, 1.0), px = 0.5 / vec2(textureSize(uVid, 0));   // (a little soft: four taps half a pixel off on the diagonals, each already four pixels blended, round the one.
+	// By the picture's own pixels: taps a whole pixel or more off, straight across and down, stood apart as copies, every point a star)
+	vec3 vid = (texture(uVid, c).rgb * 2.0 + texture(uVid, c + px).rgb + texture(uVid, c - px).rgb + texture(uVid, c + px * vec2(1.0, -1.0)).rgb + texture(uVid, c - px * vec2(1.0, -1.0)).rgb) / 6.0;
 	vec3 img = mix(vid, vec3(0.06, 0.16, 0.78), uBlue);
 	float halo = (1.0 - m) * 0.06 * (1.0 - smoothstep(0.0, 0.12, max(max(-pu.x, pu.x - 1.0), max(-pu.y, pu.y - 1.0))));
 	ALBEDO = (img * m * hot + vec3(halo)) * uProj * 1.15 * 0.85;   // (0.85: the cloth it lands on)

@@ -2,16 +2,31 @@ extends Node3D
 ## What a store puts up that isn't stock: a bunch of balloons at the counter's end, all year; and through October,
 ## Halloween: jack-o'-lanterns on the counter (a candle in each, guttering), orange and black bunting along the windows,
 ## cobwebs up in the sales floor's corners. By the computer's date (--season=halloween, or =none, to see it otherwise).
-## All lit by the room's light like the rest (room.gd), but the pumpkins' carved faces, which glow.
+## And in the theater, a black iron railing along the step behind each pair of wheelchair spaces, for the row behind.
+## All lit by the room's light like the rest (room.gd), but the pumpkins' insides, which glow through their cut faces.
 
 const COUNTER_Y := 1.1  # the returns counter's top, if nothing's found there (_on_top)
 const BALLOONS := { "at": [-2.3, 1.4], "colors": ["#d7262e", "#ffd400", "#1c4dbb", "#d7262e", "#ffd400"], "fall": ["#f26b21", "#111111", "#6c2d91", "#f26b21", "#111111"] }  # x, z on the counter; the colours, and October's
-const PUMPKINS := [[-2.05, 3.55, 0.12], [-2.05, 3.2, 0.085]]  # x, z, radius: on the counter's raised front, faces to the store
+const PUMPKINS := [[-2.0, 3.55, 0.12], [-2.0, 3.2, 0.085]]  # x, z, radius: on the counter's raised front, faces to the store
 const BUNTING := { "z": 0.4, "y": 3.25, "x": [-7.5, 10.8], "span": 3.0, "sag": 0.18, "flag": Vector2(0.17, 0.22), "every": 0.24 }
+const SHINE := 0.6  # the balloons' gloss (room.gd's: the ceiling's panels in them, a glint of the lamps; a tape's sleeve is 0.3)
+const BALLOON := { "r": 0.14, "mid": 0.165, "lift": 1.5, "draught": 0.12, "damp": 1.6 }  # how wide (they meet at their sides), the middle up from the knot; how hard one pulls up, the draught's push, how soon a swing dies away
+const KNOT := 0.022  # how far the knot hangs under a balloon
 const COBWEB := 0.7  # how far out from its corner a web reaches
+const FACE := [  # a jack-o'-lantern's cuts: eyes, nose, a jagged grin (in units of r, from the face's middle, up positive)
+	[Vector2(-0.45, 0.25), Vector2(-0.15, 0.25), Vector2(-0.3, 0.5)], [Vector2(0.15, 0.25), Vector2(0.45, 0.25), Vector2(0.3, 0.5)],
+	[Vector2(-0.08, 0.02), Vector2(0.08, 0.02), Vector2(0.0, 0.16)],
+	[Vector2(-0.5, -0.15), Vector2(-0.25, -0.38), Vector2(-0.25, -0.15)], [Vector2(-0.25, -0.15), Vector2(-0.25, -0.38), Vector2(0.25, -0.38)],
+	[Vector2(-0.25, -0.15), Vector2(0.25, -0.38), Vector2(0.25, -0.15)], [Vector2(0.25, -0.15), Vector2(0.25, -0.38), Vector2(0.5, -0.15)],
+	[Vector2(-0.12, -0.15), Vector2(0.0, -0.15), Vector2(-0.06, -0.06)]]
+const RIND := 0.87  # the inside of the shell, toward its middle: the cuts' walls this deep (~1.5 cm on the big one)
+const RAILING := { "x": [[-6.0, -4.15], [-0.35, 1.85]], "z": [42.6, 43.3], "top": 0.8, "mid": 0.4, "posts": 1.0, "color": "#151617" }  # the wheelchair spaces' ends (tools/remodel.gd's front row), where along z to look for the step down to them; the rails' heights over the step, posts no further apart than that
 
-var _bob: Array = []  # [the balloon, its rest, its phase]
-var _candles: Array[OmniLight3D] = []
+var _bob: Array = []  # [the balloon, how far its middle is from the tie, its phase, its string, where its middle is, how fast it's going, where it was]
+var _shiny: Array[MeshInstance3D] = []  # the balloons' skins
+var _tie := Vector3.ZERO  # where the strings come together, on the weight
+var _candles: Array = []  # [the light out of its face, the glow inside, the shell (its cut edges glowing), the cuts' walls]
+var _faces := {}
 var _t := 0.0
 
 
@@ -27,9 +42,11 @@ func _ready() -> void:
 	await get_tree().physics_frame
 	var fall := season() == "halloween"
 	_balloons(BALLOONS.fall if fall else BALLOONS.colors)
+	for xs: Array in RAILING.x:
+		_railing(xs[0], xs[1])
 	if fall:
 		for p: Array in PUMPKINS:
-			_pumpkin(_on_top(p[0], p[1]), p[2])
+			_pumpkin(_rest(p[0], p[1], p[2] * 0.6), p[2])
 		_bunting()
 		var f: Array = Level.data().lights.boxes.floor  # x0, x1, back wall z, ceiling
 		for c: Array in [[f[0], 0.05, 1, 1], [f[1], 0.05, -1, 1], [f[0], f[2], 1, -1], [f[1], f[2], -1, -1]]:  # [x, z, which way's in along x, along z]
@@ -37,14 +54,51 @@ func _ready() -> void:
 	var room := get_node_or_null("../Room")
 	if room != null:
 		room.light(self)
+		for mi in _shiny:
+			var m: Material = mi.mesh.surface_get_material(0)
+			if m is ShaderMaterial:
+				m.set_shader_parameter("shine", SHINE)
 
 
 func _process(dt: float) -> void:
 	_t += dt
-	for b: Array in _bob:  # (a draught off the door: each its own sway)
-		b[0].position = b[1] + Vector3(sin(_t * 0.7 + b[2]) * 0.03, sin(_t * 1.1 + b[2] * 2.0) * 0.015, cos(_t * 0.6 + b[2]) * 0.03)
-	for c in _candles:
-		c.light_energy = 0.5 + 0.12 * sin(_t * 9.0 + c.position.z * 10.0) + 0.08 * randf()
+	_float(minf(dt, 1.0 / 30.0))
+	for c: Array in _candles:  # (guttering: each its own)
+		var f := 1.0 + 0.22 * sin(_t * 9.0 + c[0].global_position.z * 10.0) + 0.16 * (randf() - 0.5)
+		c[0].light_energy = 0.35 * f
+		c[1].albedo_color = Color(f * 1.15, f * 1.15, f * 1.15)  # (over white: the brightest of it blooms a little, room.gd's glow)
+		c[3].albedo_color = Color(f, f, f)
+		var m: Material = c[2].mesh.surface_get_material(0)
+		if m is ShaderMaterial:  # (the room's, by now: room.gd)
+			m.set_shader_parameter("emission", Vector3(1.0, 0.45, 0.1) * 0.9 * f)
+
+
+func _float(dt: float) -> void:  # the bunch: each pulling up on its string, a draught off the door pushing each its own way, and pressed up against
+	# each other where they meet (moved apart, the strings pulled taut again, a few times over); leaning along their strings, the strings going with them
+	for b: Array in _bob:
+		var push := Vector3(sin(_t * 0.7 + b[2]) + 0.5 * sin(_t * 1.9 + b[2] * 3.0), 0.0, cos(_t * 0.6 + b[2]) + 0.5 * cos(_t * 1.7 + b[2] * 2.0)) * BALLOON.draught
+		b[5] = (b[5] + (Vector3.UP * BALLOON.lift + push) * dt) * exp(-dt * BALLOON.damp)
+		b[6] = b[4]
+		b[4] += b[5] * dt
+	for k in 4:
+		for b: Array in _bob:
+			b[4] = _tie + (b[4] - _tie).normalized() * b[1]
+		for i in _bob.size():
+			for j in range(i + 1, _bob.size()):
+				var d: Vector3 = _bob[j][4] - _bob[i][4]
+				var gap := d.length() - 2.0 * BALLOON.r
+				if gap < 0.0:
+					var n := d.normalized() if d.length() > 0.0001 else Vector3.RIGHT
+					_bob[i][4] += n * gap * 0.5
+					_bob[j][4] -= n * gap * 0.5
+	for b: Array in _bob:
+		b[4] = _tie + (b[4] - _tie).normalized() * b[1]
+		b[5] = (b[4] - b[6]) / maxf(dt, 0.0001)  # (what the pushing apart did, kept as its speed)
+		var up: Vector3 = (b[4] - _tie).normalized()
+		var lean := Basis(Quaternion(Vector3.UP, up))
+		b[0].transform = Transform3D(lean, b[4] - up * BALLOON.mid)
+		var knot: Vector3 = b[4] - up * (BALLOON.mid + KNOT)
+		b[3].transform = Transform3D(lean.scaled_local(Vector3(1, _tie.distance_to(knot), 1)), (_tie + knot) / 2.0)
 
 
 func _mat(c: Color, unshaded := false) -> StandardMaterial3D:
@@ -71,8 +125,16 @@ func _on_top(x: float, z: float) -> Vector3:  # whatever's there, from above: th
 	return Vector3(x, hit.position.y if hit else COUNTER_Y, z)
 
 
+func _rest(x: float, z: float, r: float) -> Vector3:  # on the highest of what's under that much round there: the counter steps up under them (a lip, then the raised front)
+	var top := _on_top(x, z)
+	for i in 8:
+		top.y = maxf(top.y, _on_top(x + r * cos(i * TAU / 8.0), z + r * sin(i * TAU / 8.0)).y)
+	return top
+
+
 func _balloons(colors: Array) -> void:
 	var tie := _on_top(BALLOONS.at[0], BALLOONS.at[1])
+	_tie = tie + Vector3(0, 0.05, 0)
 	_put(_box(Vector3(0.07, 0.05, 0.07)), _mat(Color("#444444")), Transform3D(Basis.IDENTITY, tie + Vector3(0, 0.025, 0)))  # the weight
 	for i in colors.size():
 		var ang := i * TAU / colors.size() + 0.4
@@ -83,14 +145,29 @@ func _balloons(colors: Array) -> void:
 		var s := SphereMesh.new()
 		s.radius = 0.14
 		s.height = 0.33
-		_put(s, _mat(Color(colors[i])), Transform3D(Basis.IDENTITY, Vector3(0, 0.165, 0)), ball)
-		var string := CylinderMesh.new()  # (from the weight to its knot)
-		var run := top - tie
+		var skin := _mat(Color(colors[i]))
+		_shiny.append(_put(s, skin, Transform3D(Basis.IDENTITY, Vector3(0, 0.165, 0)), ball))
+		var neck := CylinderMesh.new()  # the knot: the neck pinched in, then the tied-off lip, a little fatter
+		neck.top_radius = 0.016
+		neck.bottom_radius = 0.006
+		neck.height = 0.014
+		neck.radial_segments = 12
+		_shiny.append(_put(neck, skin, Transform3D(Basis.IDENTITY, Vector3(0, -0.005, 0)), ball))
+		var lip := SphereMesh.new()
+		lip.radius = 0.009
+		lip.height = 0.012
+		lip.radial_segments = 12
+		lip.rings = 6
+		_shiny.append(_put(lip, skin, Transform3D(Basis.IDENTITY, Vector3(0, -0.015, 0)), ball))
+		var string := CylinderMesh.new()  # (from the weight to its knot: 1 long, stretched to fit each frame)
 		string.top_radius = 0.0015
 		string.bottom_radius = 0.0015
-		string.height = run.length()
-		_put(string, _mat(Color("#dddddd")), Transform3D(Basis(Quaternion(Vector3.UP, run.normalized())), tie + run / 2.0))
-		_bob.append([ball, top, i * 1.7])
+		string.height = 1.0
+		string.radial_segments = 6
+		var mid := top + Vector3(0, BALLOON.mid, 0)
+		_bob.append([ball, _tie.distance_to(mid), i * 1.7, _put(string, _mat(Color("#dddddd")), Transform3D.IDENTITY), mid, Vector3.ZERO, mid])
+	for k in 300:  # (already settled into a bunch when the store opens)
+		_float(1.0 / 60.0)
 
 
 func _box(size: Vector3) -> BoxMesh:
@@ -99,47 +176,236 @@ func _box(size: Vector3) -> BoxMesh:
 	return b
 
 
-func _pumpkin(at: Vector3, r: float) -> void:
+func _pumpkin(at: Vector3, r: float) -> void:  # a hollow one: a ribbed shell, its face cut right through; the candle's glow inside, seen only through the cuts, and on their edges; its light only out the front
 	var p := Node3D.new()
 	p.position = at
 	p.rotation.y = PI / 2  # (its face, +z, to the store: +x)
 	add_child(p)
-	for i in 6:  # the ribs: a few squashed spheres turned about the middle
-		var s := SphereMesh.new()
-		s.radius = r * 0.62
-		s.height = r * 1.5
-		var off := Vector3(cos(i * TAU / 6.0), 0, sin(i * TAU / 6.0)) * r * 0.38
-		_put(s, _mat(Color("#e8761c")), Transform3D(Basis.IDENTITY, off + Vector3(0, r * 0.72, 0)), p)
+	var pts := _pumpkin_shape(r)
+	var lo := INF  # (sat on its lowest point: not sunk into the counter)
+	for row: Array in pts:
+		for v: Vector3 in row:
+			lo = minf(lo, v.y)
+	var lift := Vector3(0, -lo, 0)
+	var front := SurfaceTool.new()  # what's round the face, textured with the cuts; the rest of it plain
+	var rest := SurfaceTool.new()
+	var inside := SurfaceTool.new()
+	var walls := SurfaceTool.new()
+	for st in [front, rest, inside, walls]:
+		st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var mid := Vector3(0, r * 0.75, 0)  # (the face's middle, the cuts measured from it)
+	var flame := Vector3(0, r * 0.35, 0)  # (the candle, low inside)
+	var rows := pts.size()
+	var cols: int = pts[0].size()
+	for i in rows - 1:
+		for j in cols:
+			var q := [[i, j], [i + 1, j], [i + 1, (j + 1) % cols], [i, j], [i + 1, (j + 1) % cols], [i, (j + 1) % cols]]
+			var on_face := q.all(func(k: Array) -> bool: return pts[k[0]][k[1]].z > r * 0.25)
+			for k: Array in [q[0], q[2], q[1], q[3], q[5], q[4]]:  # (clockwise from outside)
+				var v: Vector3 = pts[k[0]][k[1]]
+				var st := front if on_face else rest
+				st.set_normal(_pumpkin_normal(pts, k[0], k[1]))
+				if on_face:
+					st.set_uv(Vector2(0.5 + 0.5 * v.x / r, 0.5 - 0.5 * (v.y - mid.y) / r))
+				st.add_vertex(v + lift)
+			for k: Array in q:  # the inside: the same, a little smaller, facing in; brightest near the flame
+				var v: Vector3 = pts[k[0]][k[1]]
+				var w := mid + (v - mid) * RIND
+				var near := exp(-w.distance_to(flame) / (r * 0.9))
+				inside.set_color(Color(1.0, 0.42 + 0.3 * near, 0.06 + 0.14 * near) * (0.3 + 0.7 * near))
+				inside.add_vertex(w + lift)
+	for e: Array in _face_edges():  # the cuts' walls: the flesh, lit by the candle, brighter further in
+		var n := ceili(e[0].distance_to(e[1]) / 0.06)
+		for t in n:
+			var o0 := _pumpkin_front(r, e[0].lerp(e[1], float(t) / n) * r + Vector2(0, mid.y))
+			var o1 := _pumpkin_front(r, e[0].lerp(e[1], float(t + 1) / n) * r + Vector2(0, mid.y))
+			var i0 := mid + (o0 - mid) * RIND
+			var i1 := mid + (o1 - mid) * RIND
+			for v: Array in [[o0, false], [o1, false], [i1, true], [o0, false], [i1, true], [i0, true]]:
+				walls.set_color(Color(1.0, 0.62, 0.22) * 0.75 if v[1] else Color(0.85, 0.42, 0.12) * 0.45)
+				walls.add_vertex(v[0] + lift)
+	var shell := _mat(Color("#e8761c"))
+	var cut := _mat(Color("#e8761c"))
+	cut.albedo_texture = _face_texture()
+	cut.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+	cut.emission_enabled = true
+	cut.emission = Color(1.0, 0.55, 0.15)
+	cut.emission_texture = _face_texture(true)
+	var a := front.commit()
+	a.surface_set_material(0, cut)
+	rest.commit(a)
+	a.surface_set_material(1, shell)
+	var sm := MeshInstance3D.new()
+	sm.mesh = a
+	p.add_child(sm)
+	var glow := _mat(Color.WHITE, true)
+	glow.vertex_color_use_as_albedo = true  # (facing in: through a cut, its far side)
+	var flesh := _mat(Color.WHITE, true)
+	flesh.vertex_color_use_as_albedo = true
+	flesh.cull_mode = BaseMaterial3D.CULL_DISABLED  # (the cuts' walls, from either way)
+	var im := MeshInstance3D.new()
+	im.mesh = inside.commit()
+	walls.commit(im.mesh)
+	im.mesh.surface_set_material(0, glow)
+	im.mesh.surface_set_material(1, flesh)
+	p.add_child(im)
+	var top: Vector3 = pts[0][0] + lift
 	var stem := CylinderMesh.new()
 	stem.top_radius = r * 0.08
 	stem.bottom_radius = r * 0.13
 	stem.height = r * 0.35
-	_put(stem, _mat(Color("#4b5a23")), Transform3D(Basis(Vector3.BACK, 0.2), Vector3(0, r * 1.55, 0)), p)
-	var glow := _mat(Color(1.0, 0.75, 0.25), true)  # the carved face, lit from inside
-	var face := SurfaceTool.new()
-	face.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var z := r * 0.99
-	var y := r * 0.72
-	for tri: Array in [  # eyes, nose, a jagged grin (in units of r, on the front)
-		[Vector2(-0.45, 0.25), Vector2(-0.15, 0.25), Vector2(-0.3, 0.5)], [Vector2(0.15, 0.25), Vector2(0.45, 0.25), Vector2(0.3, 0.5)],
-		[Vector2(-0.08, 0.02), Vector2(0.08, 0.02), Vector2(0.0, 0.16)],
-		[Vector2(-0.5, -0.15), Vector2(-0.25, -0.38), Vector2(-0.25, -0.15)], [Vector2(-0.25, -0.15), Vector2(-0.25, -0.38), Vector2(0.25, -0.38)],
-		[Vector2(-0.25, -0.15), Vector2(0.25, -0.38), Vector2(0.25, -0.15)], [Vector2(0.25, -0.15), Vector2(0.25, -0.38), Vector2(0.5, -0.15)],
-		[Vector2(-0.12, -0.15), Vector2(0.0, -0.15), Vector2(-0.06, -0.06)]]:
-		for v: Vector2 in [tri[0], tri[2], tri[1]]:  # (clockwise from the front)
-			face.add_vertex(Vector3(v.x * r, y + v.y * r, z + 0.002 - (0.2 * absf(v.x) + 0.3 * v.y * v.y) * r))  # (round the pumpkin's curve)
-	var fm := MeshInstance3D.new()
-	fm.mesh = face.commit()
-	fm.material_override = glow
-	fm.material_override.cull_mode = BaseMaterial3D.CULL_DISABLED
-	p.add_child(fm)
-	var candle := OmniLight3D.new()
+	_put(stem, _mat(Color("#4b5a23")), Transform3D(Basis(Vector3.BACK, 0.2), top + Vector3(0, r * 0.12, 0)), p)
+	var candle := SpotLight3D.new()  # (out of the face only: none through the shell)
 	candle.light_color = Color(1.0, 0.6, 0.25)
-	candle.omni_range = 1.4
+	candle.spot_range = 1.2
+	candle.spot_angle = 55.0
+	candle.spot_attenuation = 1.2
 	candle.light_specular = 0.0
-	candle.position = at + Vector3(r * 1.3, r * 0.7, 0)  # (just out in front of the face: inside, the pumpkin would shadow it)
-	add_child(candle)
-	_candles.append(candle)
+	candle.position = mid + lift + Vector3(0, 0, r * 1.02)
+	candle.rotation.y = PI  # (looking out along +z)
+	p.add_child(candle)
+	_candles.append([candle, glow, sm, flesh])
+
+
+func _pumpkin_shape(r: float) -> Array:  # rows from the top to the bottom, round from the front: squat, eight ribs, dimpled where the stem goes in and underneath
+	var pts := []
+	var rows := 18
+	var cols := 48
+	for i in rows + 1:
+		var th := PI * i / rows
+		var row := []
+		for j in cols:
+			var ph := TAU * j / cols
+			row.append(_pumpkin_at(r, th, ph))
+		pts.append(row)
+	return pts
+
+
+func _pumpkin_at(r: float, th: float, ph: float) -> Vector3:  # down from the top th, round from the front ph
+	var k := r * (1.0 - 0.07 * pow(absf(sin(4.0 * ph)), 6.0))  # (the grooves, narrow; a rib down the middle of the face)
+	var y := r * 0.75 + r * 0.72 * cos(th) - r * 0.18 * exp(-pow(th / 0.45, 2.0)) + r * 0.1 * exp(-pow((PI - th) / 0.5, 2.0))
+	return Vector3(k * sin(th) * sin(ph), y, k * sin(th) * cos(ph))
+
+
+func _pumpkin_front(r: float, at: Vector2) -> Vector3:  # the point on the front with that x and y (found by a few steps in)
+	var th := acos(clampf((at.y - r * 0.75) / (r * 0.72), -1.0, 1.0))
+	var ph := 0.0
+	for i in 6:
+		var p := _pumpkin_at(r, th, ph)
+		th = clampf(th + (p.y - at.y) / (r * 0.72 * maxf(sin(th), 0.2)), 0.05, PI - 0.05)
+		ph = clampf(ph - (p.x - at.x) / (r * sin(th) * maxf(cos(ph), 0.2)), -1.2, 1.2)
+	return _pumpkin_at(r, th, ph)
+
+
+func _face_edges() -> Array:  # the cuts' outlines: every edge of FACE's triangles, split where another's corner sits on it, but those two triangles share
+	var corners := []
+	for t: Array in FACE:
+		corners.append_array(t)
+	var count := {}  # [one end, the other, how many triangles have it], by where it is
+	for t: Array in FACE:
+		for k in 3:
+			var a: Vector2 = t[k]
+			var b: Vector2 = t[(k + 1) % 3]
+			var cuts := [0.0, 1.0]
+			for c: Vector2 in corners:
+				var u := (c - a).dot(b - a) / (b - a).length_squared()
+				if u > 0.001 and u < 0.999 and c.distance_to(a.lerp(b, u)) < 0.0005:
+					cuts.append(u)
+			cuts.sort()
+			for i in cuts.size() - 1:
+				var p := a.lerp(b, cuts[i])
+				var q := a.lerp(b, cuts[i + 1])
+				var key := str([p.snappedf(0.001), q.snappedf(0.001)] if p < q else [q.snappedf(0.001), p.snappedf(0.001)])
+				if not count.has(key):
+					count[key] = [p, q, 0]
+				count[key][2] += 1
+	return count.values().filter(func(e: Array) -> bool: return e[2] == 1)
+
+
+func _pumpkin_normal(pts: Array, i: int, j: int) -> Vector3:  # across the neighbours, round and down
+	var cols: int = pts[0].size()
+	var a: Vector3 = pts[maxi(i - 1, 0)][j]
+	var b: Vector3 = pts[mini(i + 1, pts.size() - 1)][j]
+	var c: Vector3 = pts[i][(j + cols - 1) % cols]
+	var d: Vector3 = pts[i][(j + 1) % cols]
+	if i == 0:
+		return Vector3.UP
+	if i == pts.size() - 1:
+		return Vector3.DOWN
+	return (d - c).cross(a - b).normalized()
+
+
+func _face_texture(rim := false) -> ImageTexture:  # the cuts, as seen from the front (2r across): clear in the holes; the rim: their edges, glowing
+	var key := "rim" if rim else "cut"
+	if _faces.has(key):
+		return _faces[key]
+	const N := 96
+	var tris := FACE
+	var hole := PackedByteArray()
+	hole.resize(N * N)
+	for y in N:
+		for x in N:
+			var pt := Vector2((x + 0.5) / N * 2.0 - 1.0, 1.0 - (y + 0.5) / N * 2.0)
+			hole[y * N + x] = 1 if tris.any(func(t: Array) -> bool: return Geometry2D.point_is_inside_triangle(pt, t[0], t[1], t[2])) else 0
+	var img := Image.create(N, N, false, Image.FORMAT_RGBA8)
+	const EDGE := 3  # (px: the cut edge's thickness, lit)
+	for y in N:
+		for x in N:
+			if not rim:
+				img.set_pixel(x, y, Color(1, 1, 1, 0.0 if hole[y * N + x] else 1.0))
+				continue
+			var d := 99.0
+			for dy in range(-EDGE, EDGE + 1):
+				for dx in range(-EDGE, EDGE + 1):
+					var xx := x + dx
+					var yy := y + dy
+					if xx >= 0 and yy >= 0 and xx < N and yy < N and hole[yy * N + xx]:
+						d = minf(d, sqrt(dx * dx + dy * dy))
+			var g := 0.0 if d > EDGE else 1.0 - d / (EDGE + 1.0)
+			img.set_pixel(x, y, Color(g, g, g))
+	img.generate_mipmaps()
+	_faces[key] = ImageTexture.create_from_image(img)
+	return _faces[key]
+
+
+func _railing(x0: float, x1: float) -> void:  # along the edge of the row behind's step, standing on it: posts, a mid rail, a round top rail; solid
+	var space := get_world_3d().direct_space_state
+	var top := INF  # the step's height, then where it drops off (felt for from above, between that row's seats and the spaces)
+	var edge := 42.88
+	var z: float = RAILING.z[0]
+	while z < RAILING.z[1]:
+		var hit := space.intersect_ray(PhysicsRayQueryParameters3D.create(Vector3((x0 + x1) / 2.0, -0.9, z), Vector3((x0 + x1) / 2.0, -3.0, z)))
+		if hit:
+			if top == INF:
+				top = hit.position.y
+			elif hit.position.y < top - 0.1:
+				edge = z - 0.01
+				break
+		z += 0.01
+	if top == INF:
+		return
+	var at := edge - 0.05
+	var iron := _mat(Color(RAILING.color))
+	var n := ceili((x1 - x0) / RAILING.posts)
+	for i in n + 1:
+		var x := lerpf(x0, x1, float(i) / n)
+		_put(_box(Vector3(0.04, RAILING.top, 0.04)), iron, Transform3D(Basis.IDENTITY, Vector3(x, top + RAILING.top / 2.0, at)))
+		_put(_box(Vector3(0.1, 0.008, 0.1)), iron, Transform3D(Basis.IDENTITY, Vector3(x, top + 0.004, at)))  # (its foot, bolted down)
+	_put(_box(Vector3(x1 - x0, 0.025, 0.025)), iron, Transform3D(Basis.IDENTITY, Vector3((x0 + x1) / 2.0, top + RAILING.mid, at)))
+	var rail := CylinderMesh.new()
+	rail.top_radius = 0.022
+	rail.bottom_radius = 0.022
+	rail.height = x1 - x0 + 0.04
+	rail.radial_segments = 12
+	_put(rail, iron, Transform3D(Basis(Vector3.BACK, PI / 2.0), Vector3((x0 + x1) / 2.0, top + RAILING.top, at)))
+	var body := StaticBody3D.new()
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(x1 - x0 + 0.05, 1.0, 0.08)
+	shape.shape = box
+	body.add_child(shape)
+	body.position = Vector3((x0 + x1) / 2.0, top + 0.5, at)
+	add_child(body)
 
 
 func _bunting() -> void:  # pennants on a sagging string along the storefront, inside the glass

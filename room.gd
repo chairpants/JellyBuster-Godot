@@ -169,7 +169,7 @@ void fragment() {
 			float lit = textureLod(uPanels, (hit - uPanelBox.xy) / uPanelBox.zw, log2(1.0 + t * (1.0 - shine) * 3.0)).r;
 			float zone = hit.y < uZoneSplit.x ? uZone.x : (hit.y < uZoneSplit.y ? uZone.y : uZone.z);
 			float fr = 0.04 + 0.96 * pow(1.0 - clamp(dot(rN, -V), 0.0, 1.0), 5.0);
-			EMISSION += vec3(lit * zone * fr * shine * PANEL_REFLECT);
+			EMISSION += vec3(lit * zone * fr * shine * PANEL_REFLECT) * smoothstep(0.02, 0.25, R.y);   // (fading out toward level: on something round, no hard line where the ceiling ends)
 		}
 	}
 }

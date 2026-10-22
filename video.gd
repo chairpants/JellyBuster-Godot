@@ -71,7 +71,7 @@ var _shown := 0  # frames put up since it started
 func _ready() -> void:
 	add_child(audio)
 	audio.position = Vector3.ZERO  # (the TV's, once a tape goes in: tapes.gd)
-	audio.unit_size = 3.0
+	audio.unit_size = 4.8
 	audio.attenuation_model = AudioStreamPlayer3D.ATTENUATION_DISABLED  # (it only pans: how far off and what walls are between, ambience.gd's _hear, after the squeeze)
 	audio.attenuation_filter_db = 0.0
 	audio.bus = "Film"  # (evened out there: ambience.gd)

@@ -46,9 +46,12 @@ func save() -> void:
 	var lights: Node = main.get_node("Lights")
 	var weather: Node = main.get_node("Weather")
 	var cf := ConfigFile.new()
-	var sat: bool = player.seat != null
-	cf.set_value("you", "at", interact.stood_at.at if sat else player.global_position)  # (sat down: where you got up from, the seat's below)
-	cf.set_value("you", "yaw", interact.stood_at.yaw if sat else player.rotation.y)
+	var things: Node = main.get_node("Things")
+	var stood: Dictionary = {}  # (sat down: where you got up from, the seat's below. The stool keeps its own; it isn't one of the seats, so you're put back stood by it)
+	if player.seat != null:
+		stood = things._stood if things.on_stool else interact.stood_at
+	cf.set_value("you", "at", stood.get("at", player.global_position))
+	cf.set_value("you", "yaw", stood.get("yaw", player.rotation.y))
 	cf.set_value("you", "pitch", player.get_node("Camera").rotation.x)
 	cf.set_value("you", "seat", interact.seats.find(player.seat))
 	cf.set_value("you", "fly", player.fly)

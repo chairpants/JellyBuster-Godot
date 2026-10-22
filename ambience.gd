@@ -109,10 +109,15 @@ func _hear(main: Node, lights: Node, dt: float) -> void:  # the film, as heard f
 	var ear: Vector3 = get_viewport().get_camera_3d().global_position
 	var best := -INF  # the film's on every screen: its sound from whichever you'd hear best (they're rooms apart: where one's loud the other's next to nothing)
 	var w := 0.0
-	for sc: Dictionary in main.get_node("Tapes").screens:
+	var screens: Array = main.get_node("Tapes").screens.duplicate()
+	var things: Node = main.get_node("Things")
+	if things.cine_on:  # the movie on the roof: from the bedsheet, heard in the open up there; from in the building, not at all
+		var sheet: Array = things.T.cine.sheet.p
+		screens.append({ "kind": "roof", "x": sheet[0], "y": sheet[1], "z": sheet[2] })
+	for sc: Dictionary in screens:
 		var at := Vector3(sc.x, sc.y, sc.z)
-		var u := 8.0 if sc.kind == "theater" else 3.0  # (clear out to here: tapes.gd's _speaker)
-		var sw: float = lights.walls(ear, at)
+		var u := 8.0 if sc.kind == "theater" else 4.8  # (clear out to here: tapes.gd's _speaker. The roof's no louder than a TV: over 5, lights.gd takes it for the theater's and brings the house lights down)
+		var sw: float = (0.0 if lights.outdoors(ear) else lights.SHUT) if sc.kind == "roof" else lights.walls(ear, at)
 		var db := 20.0 * log(u / maxf(ear.distance_to(at), u * 0.7)) / log(10.0) + WALL_DB * sw
 		if db > best:
 			best = db
@@ -474,8 +479,8 @@ func _bake() -> void:
 	for i in tap.size():
 		tap[i] += splash[i] * (0.35 + 0.15 * sin(TAU * 7.5 * i / RATE))
 	_baked.tap = [_wav(tap, true)]
-	_baked.thunder_near = range(3).map(func(_i: int) -> AudioStreamWAV: return _wav(_thunder(true)))
-	_baked.thunder_far = range(3).map(func(_i: int) -> AudioStreamWAV: return _wav(_thunder(false)))
+	_baked.thunder_near = range(5).map(func(_i: int) -> AudioStreamWAV: return _wav(_thunder(true)))
+	_baked.thunder_far = range(5).map(func(_i: int) -> AudioStreamWAV: return _wav(_thunder(false)))
 	_baked.swing = [_wav(_looped(_filter(_colour("pink", RATE * 2 + F), "bandpass", 700.0, 0.9), RATE * 2), true)]  # the air off a swinging leaf
 	for u in UNITS.size():  # a rooftop unit: the compressor's drone (a sawtooth near 59 Hz, the highs off it) under the fan's rush, beating with the blades
 		var u_saw := _zeros(n)
@@ -577,10 +582,10 @@ func _voice() -> PackedFloat32Array:  # one talker: a few seconds of syllables a
 	return _filter(out, "lowpass", 1700.0, 1.0)
 
 
-func _thunder(near: bool) -> PackedFloat32Array:  # close: a tearing crack, then the boom rolling round; far: only the roll, low and long
+func _thunder(near: bool) -> PackedFloat32Array:  # close: a dull crack, then the boom rolling round; far: only the roll, low and long. Mostly bass
 	var n := RATE * (6 if near else 8)
-	var roll := _filter(_filter(_colour("brown", n), "lowpass", 180.0 if near else 110.0, 0.7), "lowpass", 260.0, 0.5)
-	var crack := _filter(_colour("white", n), "lowpass", 3000.0, 0.5)
+	var roll := _filter(_filter(_colour("brown", n), "lowpass", randf_range(95.0, 140.0) if near else randf_range(55.0, 85.0), 0.7), "lowpass", 160.0, 0.5)
+	var crack := _filter(_colour("white", n), "lowpass", 900.0, 0.5)
 	var lfo := [[randf_range(0.6, 1.6), randf() * TAU], [randf_range(1.8, 3.5), randf() * TAU], [randf_range(0.2, 0.5), randf() * TAU]]  # (the roll swelling and fading as it bounces off things)
 	var d := _zeros(n)
 	for i in n:
@@ -589,7 +594,7 @@ func _thunder(near: bool) -> PackedFloat32Array:  # close: a tearing crack, then
 		var env := minf(1.0, t / (0.05 if near else 0.6)) * exp(-t / (1.6 if near else 2.6))
 		d[i] = roll[i] * 2.6 * env * maxf(0.0, swell)
 		if near:
-			d[i] += crack[i] * 0.9 * exp(-t / 0.09) * (0.6 + 0.4 * randf())  # (the crack: ragged)
+			d[i] += crack[i] * 0.3 * exp(-t / 0.09) * (0.6 + 0.4 * randf())  # (the crack: ragged, and dull)
 	return d
 
 
@@ -598,7 +603,9 @@ func thunder(near: bool) -> void:  # out there: through the glass when you're in
 		return
 	var p := AudioStreamPlayer.new()
 	p.stream = _baked["thunder_near" if near else "thunder_far"].pick_random()
-	p.volume_db = linear_to_db((0.9 if near else 0.45) * 0.9 / HEAD)
+	var deep: bool = $"../Lights".zone_at(get_viewport().get_camera_3d().global_position) in ["theater", "booth"]  # (no windows: only the low end, through the walls and the roof)
+	p.volume_db = linear_to_db((0.5 if near else 0.25) * randf_range(0.45, 1.0) * (0.35 if deep else 1.0) * 0.9 / HEAD)  # (quiet, and never twice the same)
+	p.pitch_scale = randf_range(0.65, 0.8) if deep else randf_range(0.8, 1.0)
 	p.bus = "Outside"
 	p.finished.connect(p.queue_free)
 	add_child(p)

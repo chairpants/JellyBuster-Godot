@@ -52,7 +52,7 @@ const NEAR := [0.0, 0.0, 26.0, 26.0, 9.5, -0.5, 1.0]
 const GROUND := [[0x55595e, 0x2e3237, 1.0], [0x2b2d31, 0x1b1d20, 0.6], [0x9a9d9f, 0x6a6e72, 1.0], [0xb9bcc0, 0x8c9094, 1.0], [0x3f7d3a, 0x2f5f2c, 1.0]]  # pavement, road, sidewalk, curb, grass: dry, wet, how much snow settles
 const SNOW := 0xe6ebf0
 const GALE := 1.4  # a blizzard's wind, over the day's (a thunderstorm gets half)
-const BOLT := { "every": [5.0, 20.0], "near": 0.35, "energy": 3.0 }  # a thunderstorm's lightning: seconds between strikes, how many are close (a crack, the thunder right after), how bright on the lot
+const BOLT := { "every": [6.0, 45.0], "near": 0.35, "energy": 3.0 }  # a thunderstorm's lightning: seconds between strikes, how many are close (a crack, the thunder right after), how bright on the lot
 
 var kind := "clear"  # what's falling: "rain" | "snow" (kept after it stops, till the next spell)
 var k := 0.0  # how hard, 0..1
@@ -244,7 +244,7 @@ func _lightning(dt: float, raining: float) -> void:  # a thunderstorm's: a strik
 				t += randf_range(0.08, 0.22)
 			_strike = { "t": 0.0, "pulses": pulses, "power": 1.0 if near else randf_range(0.3, 0.6) }
 			_bolt.rotation = Vector3(deg_to_rad(randf_range(-75.0, -35.0)), randf() * TAU, 0.0)  # (somewhere up there)
-			get_tree().create_timer(randf_range(0.15, 0.7) if near else randf_range(1.5, 5.0)).timeout.connect(func() -> void: $"../Ambience".thunder(near))  # (sound's slower than light: ~3 s a kilometre)
+			get_tree().create_timer(randf_range(0.15, 0.9) if near else randf_range(1.5, 9.0)).timeout.connect(func() -> void: $"../Ambience".thunder(near))  # (sound's slower than light: ~3 s a kilometre)
 	flash = 0.0
 	if not _strike.is_empty():
 		_strike.t += dt

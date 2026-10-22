@@ -15,6 +15,10 @@ extends SceneTree
 ##   round a landing, through a door marked for staff; the beam from its port. Outside, the booth and the auditorium
 ##   one taller block, roofed at 6.4 m, with an iron stair up to it
 ##   from the store's roof; the back ladder moved off its side to the back of the back of house.
+## strip: VaultBuster's shelf layout out of the level for good, as level.gd's strip() takes it out every time the game
+##   starts (store.gd lays out its own): in the editor, its wall runs no longer stand across the hall's moved doorway.
+## restroom: the floors either side of the wall between the restroom and the break room meeting under it, square (boh
+##   moved that wall over, but only the floors' far corners with it: a wedge of the break room's floor in the restroom).
 ##
 ## Things are moved the way level.gd moves them past SEAM: a small thing whole, by where its middle is; anything big
 ## that crosses the edge of what's moving is stretched, its far vertices moved and its texture carried on rather
@@ -56,6 +60,16 @@ func _init() -> void:
 				quit(1)
 				return
 			_theater()
+		"restroom":
+			if not "boh" in done:
+				push_error("remodel: restroom goes after boh")
+				quit(1)
+				return
+			_restroom()
+		"strip":
+			var level: Node = preload("res://level.gd").new()
+			level.strip(w)
+			level.free()
 		_:
 			push_error("remodel: no section called '%s'" % section)
 			quit(1)
@@ -67,15 +81,46 @@ func _init() -> void:
 	var err := packed.pack(w)
 	if err == OK:
 		err = ResourceSaver.save(packed, WORLD, ResourceSaver.FLAG_COMPRESS)  # (as it came: compressed)
-	var f := FileAccess.open(DATA, FileAccess.WRITE)
-	f.store_string(_json(data))
-	f.close()
+	if not section in ["strip", "restroom"]:  # (the level only: the data's as it was)
+		var f := FileAccess.open(DATA, FileAccess.WRITE)
+		f.store_string(_json(data))
+		f.close()
 	print("remodel: %s done, %s" % [section, error_string(err)])
 	w.free()
 	quit(0 if err == OK else 1)
 
 
 # ---- the sections
+
+func _restroom() -> void:  # each floor's corner by the hall, still where the wall was, over to where it is (its texture carried on)
+	var wall := _bounds(_node("boh/box 0_20 x 2_70 x 3_20"))
+	var x := wall.get_center().x
+	for path in ["boh/plane 6_30 x 3_20 x 0_00", "boh/plane 2_70 x 3_20 x 0_00"]:
+		var m: MeshInstance3D = _node(path)
+		var a := m.mesh.surface_get_arrays(0)
+		var vs: PackedVector3Array = a[Mesh.ARRAY_VERTEX]
+		var uvs: PackedVector2Array = a[Mesh.ARRAY_TEX_UV]
+		var to_local := m.global_transform.affine_inverse()
+		for i in vs.size():
+			var g := m.global_transform * vs[i]
+			if absf(g.x - x) < 0.01 or absf(g.x - x) > 0.7 or g.z > wall.get_center().z:
+				continue  # (already under it; the far wall; the far end, moved already)
+			var j := -1  # its neighbour along x on the same edge, to carry the texture on from
+			for k in vs.size():
+				if k != i and absf((m.global_transform * vs[k]).z - g.z) < 0.01:
+					j = k
+			var gj := m.global_transform * vs[j]
+			var per := (uvs[i] - uvs[j]) / (g.x - gj.x)
+			uvs[i] += per * (x - g.x)
+			vs[i] = to_local * Vector3(x, g.y, g.z)
+		a[Mesh.ARRAY_VERTEX] = vs
+		a[Mesh.ARRAY_TEX_UV] = uvs
+		var mat := m.mesh.surface_get_material(0)
+		var mesh := ArrayMesh.new()
+		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, a)
+		mesh.surface_set_material(0, mat)
+		m.mesh = mesh
+
 
 func _boh() -> void:
 	# The closet's bump, outside: its walls and roof edge go (the building's own carry on over where it was), and the

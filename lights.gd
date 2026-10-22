@@ -533,11 +533,16 @@ func zone_at(p: Vector3) -> String:  # which switch lights this spot ("" outdoor
 const FLOOR_SPLIT := [10.0, 19.0]  # the sales floor's switch zones: front to here, aisles to here (+ the store's depth), lounge behind (room.gd's shader too)
 const OPEN_FLOOR := ["front", "aisles", "lounge"]  # one room to the ear: nothing between them but shelves
 const SHUT := 4.0  # walls' worth when there's no way through at all (outdoors, or a room with no door to it)
+const THROUGH := [["booth", "theater", 0.5]]  # ways through for sound that aren't doorways, and what each costs: the booth's window and port, down to the screen (the film from up there, through the glass, further off)
+
+
+func outdoors(p: Vector3) -> bool:  # out in the open, or up on a roof (outside, whatever's under it)
+	return zone_at(p) == "" or p.y >= 3.3 and not zone_at(p) in ["booth", "stairwell"]
 
 
 func walls(from: Vector3, to: Vector3) -> float:  # what's between two spots, for sound (ambience.gd): 0 the same room; each doorway on the
 	# way 0.35 wide open, 1 shut; SHUT with no way round. The cheapest way through the doorways (ponytail: a few rooms, so it's relaxed a few times over, not a proper graph search)
-	var a := zone_at(from) if from.y < 3.3 or zone_at(from) in ["booth", "stairwell"] else ""  # (up on the roof: outside, whatever's under it)
+	var a := "" if outdoors(from) else zone_at(from)
 	var b := zone_at(to)
 	if a in OPEN_FLOOR:
 		a = "front"
@@ -555,6 +560,11 @@ func walls(from: Vector3, to: Vector3) -> float:  # what's between two spots, fo
 				cost[pb] = minf(cost.get(pb, INF), cost[pa] + k)
 			if cost.has(pb):
 				cost[pa] = minf(cost.get(pa, INF), cost[pb] + k)
+		for t: Array in THROUGH:
+			if cost.has(t[0]):
+				cost[t[1]] = minf(cost.get(t[1], INF), cost[t[0]] + t[2])
+			if cost.has(t[1]):
+				cost[t[0]] = minf(cost.get(t[0], INF), cost[t[1]] + t[2])
 	return minf(cost.get(b, SHUT), SHUT)
 
 
