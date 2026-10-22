@@ -7,6 +7,7 @@ extends Node
 
 const FILE := "user://state.cfg"
 const EVERY := 30.0
+const SETUP := ["--at=", "--hour=", "--weather=", "--lights", "--off=", "--flash", "--film", "--walk="]  # player.gd's: where you are, what time, what weather, what's on
 
 @onready var main := get_parent()
 var _t := 0.0
@@ -16,8 +17,8 @@ var _ready_to_save := false
 func _ready() -> void:
 	get_tree().auto_accept_quit = false  # (so the last state's kept before it goes: _notification)
 	var args := OS.get_cmdline_user_args()
-	if "--shot" in args or "--snapshot" in args:  # (the same views every time: not wherever someone last stood)
-		return
+	if "--shot" in args or "--snapshot" in args or Array(args).any(func(a: String) -> bool: return SETUP.any(func(f: String) -> bool: return a.begins_with(f))):
+		return  # (the same views every time: not wherever someone last stood. And a run set up from the command line is a test: it neither takes the last state nor leaves its own)
 	await get_tree().process_frame  # (everything's ready and the tapes are on their shelves)
 	await get_tree().process_frame
 	_load()
@@ -47,7 +48,7 @@ func save() -> void:
 	var weather: Node = main.get_node("Weather")
 	var cf := ConfigFile.new()
 	var things: Node = main.get_node("Things")
-	var stood: Dictionary = {}  # (sat down: where you got up from, the seat's below. The stool keeps its own; it isn't one of the seats, so you're put back stood by it)
+	var stood: Dictionary = {}  # (sat down: where you got up from, the seat's below. The stool keeps its own: put back stood there, then sat on it again)
 	if player.seat != null:
 		stood = things._stood if things.on_stool else interact.stood_at
 	cf.set_value("you", "at", stood.get("at", player.global_position))
@@ -69,7 +70,10 @@ func save() -> void:
 		if t.get("at", 0.0) > 0.0 or t.get("ep", 0) > 0:
 			wound[_key(t)] = [t.get("ep", 0), t.get("at", 0.0)]
 	cf.set_value("hands", "wound", wound)
-	cf.set_value("doors", "locked", main.get_node("Things").locked)
+	cf.set_value("doors", "locked", things.locked)
+	cf.set_value("things", "stools", things.stools())
+	cf.set_value("things", "on_stool", things._stools.find(things._st) if things.on_stool else -1)
+	cf.set_value("things", "projector", things.cine_on)
 	cf.set_value("screen", "muted", main.get_node("Ambience").muted)
 	cf.set_value("screen", "hud", main.get_node("HUD").visible)
 	cf.set_value("screen", "subs", tapes.sub_lang)
@@ -108,7 +112,10 @@ func _load() -> void:
 	for i in mini(doors.size(), interact.doors.size()):
 		if interact.doors[i].has("open"):
 			interact.doors[i].open = doors[i]
-	main.get_node("Things").set_locked(cf.get_value("doors", "locked", false))
+	var things: Node = main.get_node("Things")
+	things.set_locked(cf.get_value("doors", "locked", false))
+	things.put_stools(cf.get_value("things", "stools", []))
+	things.cine_on = cf.get_value("things", "projector", false)
 	var by_id := {}
 	for t: Dictionary in tapes.tapes:
 		by_id[_key(t)] = t
@@ -124,12 +131,16 @@ func _load() -> void:
 	tapes.inv_select(cf.get_value("hands", "sel", -1))
 	player.fly = cf.get_value("you", "fly", false)
 	player.get_node("Shape").disabled = player.fly
-	player.stand(cf.get_value("you", "at", player.global_position) + Vector3(0, 0.05, 0), cf.get_value("you", "yaw", player.rotation.y))  # (a hair up: never put back a step under the floor)
+	var stood := { "at": cf.get_value("you", "at", player.global_position), "yaw": cf.get_value("you", "yaw", player.rotation.y) }
+	player.stand(stood.at + Vector3(0, 0.05, 0), stood.yaw)  # (a hair up: never put back a step under the floor. Sat down, it's where you'll get up, as it was: not a hair up again every time)
 	player.get_node("Camera").rotation.x = cf.get_value("you", "pitch", 0.0)
 	var seat: int = cf.get_value("you", "seat", -1)
 	if seat >= 0 and seat < interact.seats.size():
-		interact.stood_at = { "at": player.global_position, "yaw": player.rotation.y }
+		interact.stood_at = stood
 		player.sit(interact.seats[seat])
+	var stool: int = cf.get_value("things", "on_stool", -1)
+	if seat < 0 and stool >= 0 and stool < things._stools.size():
+		things.sit_stool(things._stools[stool], stood)
 	var amb: Node = main.get_node("Ambience")
 	amb.muted = cf.get_value("screen", "muted", false)
 	AudioServer.set_bus_mute(AudioServer.get_bus_index("Store"), amb.muted)

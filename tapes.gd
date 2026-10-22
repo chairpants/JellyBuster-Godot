@@ -224,7 +224,7 @@ func stock(store: Node) -> void:  # the store's tapes onto its shelves (store.gd
 			q.rotation.y = sc.ry
 		add_child(q)
 		_quads.append(q)
-	_screens_show(false)
+	_screens_show(video.card)  # (--film: the test card up, no tape needed)
 	print("tapes: %d on the shelves in %d chunks, %d covers" % [tapes.size(), _chunks.size(), _chunks.reduce(func(a: int, ch: Dictionary) -> int: return a + ch.tex.get_layers(), 0)])
 	_resume()
 	_gen += 1

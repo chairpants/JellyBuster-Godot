@@ -43,6 +43,7 @@ var url := ""  # what's playing ("" when nothing is)
 var position := 0.0  # seconds into it
 var duration := 0.0  # 0 when Jellyfin doesn't say
 var paused := false
+var card := false  # the test card's up (--film: a picture on every screen, no server needed)
 var tint := Color.BLACK  # the average colour of the frame on screen (black when nothing's playing): what the screens light the room with
 
 var fps := 0.0  # what's playing plays at (the source's own); 0 while ffprobe's still asking
@@ -345,6 +346,32 @@ static func _rate(line: String) -> float:  # ffprobe's "avg,r" (each "24000/1001
 func _chunk_ok(path: String) -> bool:  # (against a whole frame: that catches truncated ones too)
 	var f := FileAccess.open(path, FileAccess.READ)
 	return f != null and f.get_length() >= FRAME_BYTES
+
+
+func test_card() -> void:  # colour bars over a grid, a ring in the middle, a dot every few pixels (fine detail: how sharp, how soft, any ghosting)
+	var img := Image.create_empty(RES.x, RES.y, false, Image.FORMAT_RGB8)
+	img.fill(Color(0.08, 0.08, 0.1))
+	var bars := [Color(0.75, 0.75, 0.75), Color(0.75, 0.75, 0.0), Color(0.0, 0.75, 0.75), Color(0.0, 0.75, 0.0), Color(0.75, 0.0, 0.75), Color(0.75, 0.0, 0.0), Color(0.0, 0.0, 0.75)]
+	var w := RES.x / bars.size()
+	for i in bars.size():
+		img.fill_rect(Rect2i(i * w, 0, w + 1, RES.y * 2 / 3), bars[i])
+	for i in 8:  # a grey ramp along the bottom
+		var g := i / 7.0
+		img.fill_rect(Rect2i(i * RES.x / 8, RES.y * 2 / 3, RES.x / 8 + 1, RES.y / 3), Color(g, g, g))
+	for x in range(0, RES.x, 60):
+		img.fill_rect(Rect2i(x, 0, 2, RES.y), Color.WHITE)
+	for y in range(0, RES.y, 60):
+		img.fill_rect(Rect2i(0, y, RES.x, 2), Color.WHITE)
+	for x in range(30, RES.x, 60):
+		for y in range(30, RES.y, 60):
+			img.fill_rect(Rect2i(x, y, 2, 2), Color.WHITE)
+	for i in 720:
+		var a := TAU * i / 720.0
+		img.fill_rect(Rect2i(RES.x / 2 + int(cos(a) * 250.0) - 2, RES.y / 2 + int(sin(a) * 250.0) - 2, 5, 5), Color.WHITE)
+	texture.update(img)
+	tint = Color(0.45, 0.42, 0.4)
+	_shown = 1
+	card = true
 
 
 func _frame_tint(buf: PackedByteArray) -> Color:  # a sparse stride, not every pixel: a light needs the gist

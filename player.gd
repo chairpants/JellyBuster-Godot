@@ -39,11 +39,13 @@ var climb = null  # on a ladder: { dir (1 up, -1 down), L (the ladder's climb), 
 
 func _ready() -> void:
 	var args := OS.get_cmdline_user_args()
-	if not ("--shot" in args or "--snapshot" in args):  # (not for --shot: it'd take the mouse off whoever's at the machine)
+	var shot := "--shot" in args or "--snapshot" in args
+	if not shot:  # (not for --shot: it'd take the mouse off whoever's at the machine)
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	if not shot and not Array(args).any(func(a: String) -> bool: return preload("res://save.gd").SETUP.any(func(f: String) -> bool: return a.begins_with(f))):
 		return
 	# godot --path . -- --demo --shot [--at=x,y,z,yaw,pitch] (degrees) [--hour=h] [--weather=rain|snow|fog[,1 wild]] [--lights] [--off=zone] [--flash] [--film] [--walk=s]: shot.png from there, a few seconds in, then quits
-	# (--snapshot instead: the whole store as built, as a scene for the editor: tools/snapshot.gd)
+	# (--snapshot instead: the whole store as built, as a scene for the editor: tools/snapshot.gd. Without either: set up as asked, and play on from there)
 	for a in args:
 		if a.begins_with("--hour="):
 			Clock.h = a.trim_prefix("--hour=").to_float()
@@ -63,8 +65,10 @@ func _ready() -> void:
 			wx._bolt.light_volumetric_fog_energy = 2.0 * (1.0 - $"../Sky"._inside)
 			$"../Lights".flash = 1.0
 			$"../WorldEnvironment".environment.background_energy_multiplier = 5.0
-		elif a == "--film":  # the projector running, its beam the colour of a picture (no server needed)
-			$"../Video".tint = Color(0.75, 0.7, 0.62)
+		elif a == "--film":  # a test card on every screen and the projector running, the roof's too (no server needed)
+			$"../Video".test_card()
+			$"../Things".cine_on = true
+			$"../Tapes"._screens_show(true)
 		elif a.begins_with("--off="):  # and that one's off
 			$"../Lights".put_zone.call_deferred(a.trim_prefix("--off="), false)
 		elif a.begins_with("--at="):
@@ -87,6 +91,8 @@ func _ready() -> void:
 			w.pressed = false
 			Input.parse_input_event(w)
 			print("walk: got to %s" % global_position)
+	if not shot:
+		return
 	await get_tree().create_timer(1.0).timeout
 	await RenderingServer.frame_post_draw
 	if "--snapshot" in args:
