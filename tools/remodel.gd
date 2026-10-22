@@ -26,6 +26,8 @@ extends SceneTree
 ## roof: the store's roof less bare. On the tall block's wall over it: the booth's exhaust louvre, two scuppers off its roof
 ##   and their downspouts to splash blocks, a wall pack, a disconnect and its conduit; a satellite dish on a ballasted
 ##   mount; next door's rooftop unit, a plain box, given its louvres, its fan, its rails and its disconnect
+## closet: the janitor's closet's mop bucket (a box of boxes) a rolling one, its tub oval and yellow, dirty water in it,
+##   the wringer on its end and the press's lever up, on casters; the safety sheets' station on the wall by the shelves
 ## restroom: the floors either side of the wall between the restroom and the break room meeting under it, square (boh
 ##   moved that wall over, but only the floors' far corners with it: a wedge of the break room's floor in the restroom).
 ##
@@ -81,6 +83,12 @@ func _init() -> void:
 				quit(1)
 				return
 			_roof_v2()
+		"closet":
+			if not "boh" in done:
+				push_error("remodel: closet goes after boh")
+				quit(1)
+				return
+			_closet()
 		"railings":
 			if not "theater" in done:
 				push_error("remodel: railings go after theater")
@@ -113,7 +121,7 @@ func _init() -> void:
 	var err := packed.pack(w)
 	if err == OK:
 		err = ResourceSaver.save(packed, WORLD, ResourceSaver.FLAG_COMPRESS)  # (as it came: compressed)
-	if not section in ["strip", "restroom", "railings", "hall", "roof"]:  # (the level only: the data's as it was)
+	if not section in ["strip", "restroom", "railings", "hall", "roof", "closet"]:  # (the level only: the data's as it was)
 		var f := FileAccess.open(DATA, FileAccess.WRITE)
 		f.store_string(_json(data))
 		f.close()
@@ -197,6 +205,59 @@ func _roof_v2() -> void:
 	block("out", "unit disconnect", Vector3(u.end.x + 0.01, u.position.y + 0.3, u.get_center().z - 0.12), Vector3(u.end.x + 0.12, u.position.y + 0.62, u.get_center().z + 0.12), ROOFS.unit)
 
 
+func _closet() -> void:
+	# the old bucket out (what's wholly in its corner, low down: the mops stood in it stay), the new one in its place
+	var gone := _all(R(10.3, 10.99, 29.05, 29.75, -0.1, 0.62), ["out"])
+	for m: Node in gone:
+		m.free()
+	var at := Vector3(10.64, 0.0, 29.4)
+	var tub := CylinderMesh.new()
+	tub.top_radius = 0.17
+	tub.bottom_radius = 0.14
+	tub.height = 0.3
+	tub.radial_segments = 28
+	tub.material = _mat(Color("f2c200"))
+	var tm := _add("out", "mop bucket", tub)
+	tm.global_transform = Transform3D(Basis.from_scale(Vector3(0.82, 1.0, 1.25)), at + Vector3(0, 0.21, 0))
+	var water := CylinderMesh.new()
+	water.top_radius = 0.155
+	water.bottom_radius = 0.155
+	water.height = 0.004
+	water.radial_segments = 28
+	water.material = _mat(Color("6d6a4f"))
+	var wm := _add("out", "mop bucket water", water)
+	wm.global_transform = Transform3D(Basis.from_scale(Vector3(0.82, 1.0, 1.25)), at + Vector3(0, 0.3, 0))
+	var rim := TorusMesh.new()
+	rim.inner_radius = 0.16
+	rim.outer_radius = 0.185
+	rim.rings = 28
+	rim.ring_segments = 6
+	rim.material = _mat(Color("e0b000"))
+	var rm := _add("out", "mop bucket rim", rim)
+	rm.global_transform = Transform3D(Basis.from_scale(Vector3(0.82, 0.6, 1.25)), at + Vector3(0, 0.36, 0))
+	for c: Vector2 in [Vector2(-0.12, -0.17), Vector2(0.12, -0.17), Vector2(-0.12, 0.17), Vector2(0.12, 0.17)]:
+		block("out", "caster fork", at + Vector3(c.x - 0.015, 0.035, c.y - 0.015), at + Vector3(c.x + 0.015, 0.065, c.y + 0.015), C.iron)
+		cylinder("out", "caster", at + Vector3(c.x, 0.028, c.y), 0.028, 0.022, Vector3.RIGHT, Color("1d1f22"))
+	var wz := at.z - 0.1  # the wringer, across the tub's front end: its box, the press's lever up
+	block("out", "wringer", Vector3(at.x - 0.13, 0.34, wz - 0.1), Vector3(at.x + 0.13, 0.5, wz + 0.06), Color("5b5f64"))
+	block("out", "wringer jaws", Vector3(at.x - 0.11, 0.5, wz - 0.06), Vector3(at.x + 0.11, 0.53, wz + 0.02), Color("3a3d41"))
+	bar("out", "wringer lever", Vector3(at.x + 0.12, 0.47, wz), Vector3(at.x + 0.12, 1.02, wz + 0.16), Vector2(0.025, 0.025), Color("5b5f64"))
+	block("out", "wringer grip", Vector3(at.x + 0.1, 0.98, wz + 0.12), Vector3(at.x + 0.14, 1.08, wz + 0.2), Color("1d1f22"))
+	# the safety sheets: a yellow station on the east wall by the shelves, its header, the binder in it
+	var x1 := 10.9  # (the east wall's face: where the shelves' backs are)
+	var st := [28.45, 28.85, 1.15, 1.6]  # z from, to; y from, to
+	block("out", "msds station", Vector3(x1 - 0.1, st[2], st[0]), Vector3(x1, st[3], st[1]), Color("f2c200"))
+	block("out", "msds binder", Vector3(x1 - 0.118, st[2] + 0.04, st[0] + 0.07), Vector3(x1 - 0.06, st[3] - 0.11, st[1] - 0.07), Color("1c4dbb"))  # (its spine out of the station's front)
+	block("out", "msds binder label", Vector3(x1 - 0.1195, st[2] + 0.12, st[0] + 0.1), Vector3(x1 - 0.118, st[2] + 0.22, st[1] - 0.1), Color("f4f1e8"))
+	var head := QuadMesh.new()
+	head.size = Vector2(st[1] - st[0], 0.09)
+	var lab := StandardMaterial3D.new()
+	lab.albedo_texture = ImageTexture.create_from_image(_lettering("MSDS", Color("f6f6f2"), Color("c8102e")))
+	head.material = lab
+	var hm := _add("out", "msds header", head)
+	hm.global_transform = Transform3D(Basis(Vector3.UP, -PI / 2.0), Vector3(x1 - 0.101, st[3] - 0.05, (st[0] + st[1]) / 2.0))
+
+
 const HALL := { "x": [2.0, 9.4], "z": [28.1, 29.7], "base": Color("2e2f31"), "door": Color("d4d6d8"), "trim": Color("bfc3c7"), "steel": Color("b8bcc0"), "cork": Color("b0875a"), "red": Color("c8102e") }
 
 
@@ -266,7 +327,8 @@ func _hall() -> void:
 
 static func _lettering(text: String, ink: Color, paper: Color) -> Image:  # capitals, five by seven, drawn big on a sign's face (for what's lit: the room's light won't be on them)
 	const GLYPHS := { "E": ["11111", "10000", "10000", "11110", "10000", "10000", "11111"], "X": ["10001", "10001", "01010", "00100", "01010", "10001", "10001"],
-		"I": ["11111", "00100", "00100", "00100", "00100", "00100", "11111"], "T": ["11111", "00100", "00100", "00100", "00100", "00100", "00100"] }
+		"I": ["11111", "00100", "00100", "00100", "00100", "00100", "11111"], "T": ["11111", "00100", "00100", "00100", "00100", "00100", "00100"],
+		"M": ["10001", "11011", "10101", "10101", "10001", "10001", "10001"], "S": ["01111", "10000", "10000", "01110", "00001", "00001", "11110"], "D": ["11110", "10001", "10001", "10001", "10001", "10001", "11110"] }
 	const PX := 8
 	var w := text.length() * 6 * PX + 2 * PX
 	var img := Image.create(w, 11 * PX, false, Image.FORMAT_RGB8)

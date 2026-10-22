@@ -27,3 +27,15 @@ in its guard, rails and a disconnect.
 | ![](roof/dish_before.png) | ![](roof/dish_after.png) |
 | ![](roof/side_before.png) | ![](roof/side_after.png) |
 | ![](roof/units_before.png) | ![](roof/units_after.png) |
+
+## The janitor's closet (`closet`)
+
+The mop bucket (a box of boxes) a rolling one: its tub oval and yellow, dirty water in it, the wringer across its end and
+the press's lever up, on casters. On the wall by the shelves, the safety sheets' station every closet had, its binder in it.
+
+| Before | After |
+|---|---|
+| ![](closet/bucket_before.png) | ![](closet/bucket_after.png) |
+| ![](closet/msds_before.png) | ![](closet/msds_after.png) |
+| ![](closet/in_before.png) | ![](closet/in_after.png) |
+| ![](closet/back_before.png) | ![](closet/back_after.png) |
