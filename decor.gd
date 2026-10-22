@@ -26,6 +26,7 @@ const RIND := 0.87  # the inside of the shell, toward its middle: the cuts' wall
 var _bob: Array = []  # [the balloon, how far its middle is from the tie, its phase, its string, where its middle is, how fast it's going, where it was]
 var _shiny: Array[MeshInstance3D] = []  # the balloons' skins
 var _tie := Vector3.ZERO  # where the strings come together, on the weight
+var _ball := SphereShape3D.new()  # (a balloon, as the level feels it: _bump)
 var _candles: Array = []  # [the light out of its face, the glow inside, the shell (its cut edges glowing), the cuts' walls]
 var _faces := {}
 var _t := 0.0
@@ -99,6 +100,7 @@ func _float(dt: float) -> void:  # the bunch: each pulling up on its string, a d
 					var n := d.normalized() if d.length() > 0.0001 else Vector3.RIGHT
 					_bob[i][4] += n * gap * 0.5
 					_bob[j][4] -= n * gap * 0.5
+	_bump()
 	for b: Array in _bob:
 		b[4] = _tie + (b[4] - _tie).normalized() * b[1]
 		b[5] = (b[4] - b[6]) / maxf(dt, 0.0001)  # (what the pushing apart did, kept as its speed)
@@ -107,6 +109,33 @@ func _float(dt: float) -> void:  # the bunch: each pulling up on its string, a d
 		b[0].transform = Transform3D(lean, b[4] - up * BALLOON.mid)
 		var knot: Vector3 = b[4] - up * (BALLOON.mid + KNOT)
 		b[3].transform = Transform3D(lean.scaled_local(Vector3(1, _tie.distance_to(knot), 1)), (_tie + knot) / 2.0)
+
+
+func _bump() -> void:  # off the level where one's pushed into it (a sign, the glass, the ceiling), and out of your way when you walk into them:
+	# moved out, which _float keeps as how fast it went (a shove's a swing, the string bringing it back round)
+	if Engine.is_editor_hint() or _bob.is_empty():
+		return
+	var space := get_world_3d().direct_space_state
+	_ball.radius = BALLOON.r
+	var q := PhysicsShapeQueryParameters3D.new()
+	q.shape = _ball
+	var you := get_node_or_null("../Player") as CharacterBody3D
+	if you:
+		q.exclude = [you.get_rid()]
+	for b: Array in _bob:
+		q.transform = Transform3D(Basis.IDENTITY, b[4])
+		var hit := space.get_rest_info(q)
+		if hit:
+			var into: float = BALLOON.r - (b[4] - hit.point).dot(hit.normal)
+			if into > 0.0:
+				b[4] += hit.normal * into
+		if you:  # (you: a capsule, 0.3 round, from your knees to your head)
+			var lo := you.global_position + Vector3(0, 0.3, 0)
+			var near := Geometry3D.get_closest_point_to_segment(b[4], lo, lo + Vector3(0, 1.4, 0))
+			var d: Vector3 = b[4] - near
+			var gap := d.length() - (BALLOON.r + 0.3)
+			if gap < 0.0:
+				b[4] -= (d.normalized() if d.length() > 0.0001 else Vector3.FORWARD) * gap
 
 
 func _mat(c: Color, unshaded := false) -> StandardMaterial3D:
