@@ -3,6 +3,7 @@ extends SceneTree
 ## what they were):
 ##     godot --headless --path . -s tools/remodel.gd -- <section>
 ##     godot --headless --path . -s tools/remodel.gd -- check    (the data file written back unchanged: the writer's test)
+## Each one first keeps the level and its data as they were, in user://remodel/ (dated, by section).
 ##
 ## boh: the janitor's closet in off its bump, inside the building's line, at the end of a shorter hall; the hall's way
 ##   in from the store moved along the back wall toward the middle; the restroom and break room 2 m deeper, the
@@ -84,6 +85,11 @@ func _init() -> void:
 			return
 	done.append(section)
 	w.set_meta("remodel", done)
+	var keep := "user://remodel/%s_%s" % [Time.get_datetime_string_from_system().replace(":", "-"), section]  # (the level and its data as they were, before this: user://remodel/)
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("user://remodel"))
+	DirAccess.copy_absolute(ProjectSettings.globalize_path(WORLD), ProjectSettings.globalize_path(keep + "_world.scn"))
+	DirAccess.copy_absolute(ProjectSettings.globalize_path(DATA), ProjectSettings.globalize_path(keep + "_interact.json"))
+	print("remodel: what was there kept in %s" % ProjectSettings.globalize_path(keep + "_*"))
 	root.remove_child(w)
 	var packed := PackedScene.new()
 	var err := packed.pack(w)
