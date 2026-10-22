@@ -33,12 +33,24 @@ vec3 cubic(sampler2D t, vec2 uv, vec2 sz) {   // Catmull-Rom, in nine bilinear t
 	return max(c, 0.0);
 }
 
-vec3 look(sampler2D t, vec2 uv, vec2 sz) {   // the picture at uv: blown up, cubic; seen from further back (more texels than pixels: no mipmaps to fall back on), four taps across the pixel, else it shimmers
+vec3 look(sampler2D t, vec2 uv, vec2 sz) {   // the picture at uv: blown up, cubic; seen from further back (more texels than pixels: no mipmaps to fall back on), four taps across the pixel, else it shimmers;
+	// further still (a ceiling TV across the store: ten texels and more to a pixel), sixteen, four by four. Each only where it's wanted (only the few pixels a screen that far takes pay for sixteen)
 	vec2 dx = dFdx(uv), dy = dFdy(uv);
 	float texels = max(length(dx * sz), length(dy * sz));
-	vec3 far = (texture(t, uv + 0.125 * dx + 0.375 * dy).rgb + texture(t, uv - 0.125 * dx - 0.375 * dy).rgb
+	if (texels < 0.8) return cubic(t, uv, sz);
+	vec3 far;
+	if (texels > 3.0) {
+		far = vec3(0.0);
+		for (int i = 0; i < 4; i++) {
+			for (int j = 0; j < 4; j++) {
+				far += texture(t, uv + ((float(i) + 0.5) / 4.0 - 0.5) * dx + ((float(j) + 0.5) / 4.0 - 0.5) * dy).rgb;
+			}
+		}
+		return far * 0.0625;
+	}
+	far = (texture(t, uv + 0.125 * dx + 0.375 * dy).rgb + texture(t, uv - 0.125 * dx - 0.375 * dy).rgb
 		+ texture(t, uv + 0.375 * dx - 0.125 * dy).rgb + texture(t, uv - 0.375 * dx + 0.125 * dy).rgb) * 0.25;
-	return mix(cubic(t, uv, sz), far, smoothstep(0.8, 1.3, texels));
+	return texels > 1.3 ? far : mix(cubic(t, uv, sz), far, smoothstep(0.8, 1.3, texels));
 }
 
 vec3 pic(sampler2D t, vec2 uv) {   // as the web game's CSS filters: in sRGB, brightness, contrast, saturate, hue-rotate, then an unsharp mask

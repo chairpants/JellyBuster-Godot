@@ -33,7 +33,12 @@ void fragment() {
 	float hot = 1.05 - 0.55 * dot(q, q) * 4.0;
 	vec2 c = clamp(vec2(pu.x, 1.0 - pu.y), 0.0, 1.0), px = 0.5 / vec2(textureSize(uVid, 0));   // (a little soft: four taps half a pixel off on the diagonals, each already four pixels blended, round the one.
 	// By the picture's own pixels: taps a whole pixel or more off, straight across and down, stood apart as copies, every point a star)
+	vec2 dx = dFdx(c), dy = dFdy(c);   // (from further back, more of the picture's pixels to each of the screen's than one: four taps across the screen's pixel instead, else it shimmers. No mipmaps)
+	float texels = max(length(dx / px), length(dy / px)) * 0.5;
 	vec3 vid = (texture(uVid, c).rgb * 2.0 + texture(uVid, c + px).rgb + texture(uVid, c - px).rgb + texture(uVid, c + px * vec2(1.0, -1.0)).rgb + texture(uVid, c - px * vec2(1.0, -1.0)).rgb) / 6.0;
+	if (texels > 1.0) {
+		vid = mix(vid, (texture(uVid, c + 0.125 * dx + 0.375 * dy).rgb + texture(uVid, c - 0.125 * dx - 0.375 * dy).rgb + texture(uVid, c + 0.375 * dx - 0.125 * dy).rgb + texture(uVid, c - 0.375 * dx + 0.125 * dy).rgb) * 0.25, smoothstep(1.0, 1.5, texels));
+	}
 	vec3 img = mix(vid, vec3(0.06, 0.16, 0.78), uBlue);
 	float halo = (1.0 - m) * 0.06 * (1.0 - smoothstep(0.0, 0.12, max(max(-pu.x, pu.x - 1.0), max(-pu.y, pu.y - 1.0))));
 	ALBEDO = (img * m * hot + vec3(halo)) * uProj * 1.15 * 0.85;   // (0.85: the cloth it lands on)
