@@ -193,3 +193,12 @@ bulb and deflector showing through: now they hang from the tile whole.
 |---|---|
 | ![](escutcheons/close_before.png) | ![](escutcheons/close_after.png) |
 | ![](escutcheons/aisle_before.png) | ![](escutcheons/aisle_after.png) |
+
+## The window lettering (`lettering`)
+
+The hours ran off their pane, over the mullion: each sign now smaller and centred on a pane of its own.
+
+| Before | After |
+|---|---|
+| ![](lettering/pane_before.png) | ![](lettering/pane_after.png) |
+| ![](lettering/street_before.png) | ![](lettering/street_after.png) |

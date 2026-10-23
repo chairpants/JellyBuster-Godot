@@ -61,6 +61,7 @@ extends SceneTree
 ##   the counter's run slid along to stop at the fridge (it ran into it) and the level's own microwave, inside the fridge, out
 ## escutcheons: the sprinklers down to the tiles (they were 5 cm up inside the ceiling: the data's height for it, not the
 ##   tiles'), each plate (a flat white disc) a chrome recessed escutcheon: a rolled rim, the cup inside it, a collar
+## lettering: the window lettering each on a pane of its own, centred between its mullions and small enough to fit it
 ## restroom: the floors either side of the wall between the restroom and the break room meeting under it, square (boh
 ##   moved that wall over, but only the floors' far corners with it: a wedge of the break room's floor in the restroom).
 ##
@@ -183,6 +184,12 @@ func _init() -> void:
 				quit(1)
 				return
 			_escutcheons()
+		"lettering":
+			if not "front" in done:
+				push_error("remodel: lettering goes after front")
+				quit(1)
+				return
+			_lettering_fit()
 		"railings":
 			if not "theater" in done:
 				push_error("remodel: railings go after theater")
@@ -215,7 +222,7 @@ func _init() -> void:
 	var err := packed.pack(w)
 	if err == OK:
 		err = ResourceSaver.save(packed, WORLD, ResourceSaver.FLAG_COMPRESS)  # (as it came: compressed)
-	if not section in ["strip", "restroom", "railings", "hall", "roof", "closet", "stairwell", "breakroom", "aisles", "lavatory", "booth", "outside", "foyer", "auditorium", "lounge", "front", "touchups", "escutcheons"]:  # (the level only: the data's as it was)
+	if not section in ["strip", "restroom", "railings", "hall", "roof", "closet", "stairwell", "breakroom", "aisles", "lavatory", "booth", "outside", "foyer", "auditorium", "lounge", "front", "touchups", "escutcheons", "lettering"]:  # (the level only: the data's as it was)
 		var f := FileAccess.open(DATA, FileAccess.WRITE)
 		f.store_string(_json(data))
 		f.close()
@@ -1066,6 +1073,15 @@ func _escutcheons() -> void:  # (the tiles' face is 3.60, not the 3.65 the data 
 		cylinder("store", "sprinkler escutcheon collar", at - Vector3(0, 0.01, 0), 0.016, 0.014, Vector3.UP, chrome)
 		n += 1
 	print("remodel: %d sprinkler heads down to the tile, escutcheons on" % n)
+
+
+func _lettering_fit() -> void:  # (the panes: -4.79 to -1.92 left of the doors, 1.92 to 4.07 right of them)
+	var fit := { "NEW RELEASES": [-3.355, 1.95, 0.0032], "OPEN 7 DAYS": [2.995, 2.0, 0.0021], "RETURNS?": [2.995, 1.5, 0.0018] }
+	for l: Label3D in _node("store").find_children("window lettering*", "Label3D", false, false):
+		for k: String in fit:
+			if l.text.begins_with(k):
+				l.global_position = Vector3(fit[k][0], fit[k][1], l.global_position.z)
+				l.pixel_size = fit[k][2]
 
 
 const HALL := { "x": [2.0, 9.4], "z": [28.1, 29.7], "base": Color("2e2f31"), "door": Color("d4d6d8"), "trim": Color("bfc3c7"), "steel": Color("b8bcc0"), "cork": Color("b0875a"), "red": Color("c8102e") }
