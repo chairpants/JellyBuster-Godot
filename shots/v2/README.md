@@ -182,3 +182,14 @@ slid along to stop at it, and that microwave gone (the cart's is the one).
 | ![](touchups/fig_before.png) | ![](touchups/fig_after.png) |
 | ![](touchups/mat_before.png) | ![](touchups/mat_after.png) |
 | ![](touchups/sprinkler_before.png) | ![](touchups/sprinkler_after.png) |
+
+## The sprinklers' bases (`escutcheons`)
+
+A chrome escutcheon at the tile for each: a rolled rim, a recessed cup, a collar. Fitting them showed the heads had been
+5 cm up inside the ceiling all along (built to the 3.65 m the level's data gives; the tiles' face is at 3.60), only the
+bulb and deflector showing through: now they hang from the tile whole.
+
+| Before | After |
+|---|---|
+| ![](escutcheons/close_before.png) | ![](escutcheons/close_after.png) |
+| ![](escutcheons/aisle_before.png) | ![](escutcheons/aisle_after.png) |

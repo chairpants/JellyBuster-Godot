@@ -59,6 +59,8 @@ extends SceneTree
 ##   its smaller copies; the sprinklers fewer (a 6 m grid) and made as pendent heads (a yoke, the red bulb, the deflector);
 ##   the lounge's fig a ficus (braided trunks, branches, a crown of small leaves) not a heap of balls; in the break room,
 ##   the counter's run slid along to stop at the fridge (it ran into it) and the level's own microwave, inside the fridge, out
+## escutcheons: the sprinklers down to the tiles (they were 5 cm up inside the ceiling: the data's height for it, not the
+##   tiles'), each plate (a flat white disc) a chrome recessed escutcheon: a rolled rim, the cup inside it, a collar
 ## restroom: the floors either side of the wall between the restroom and the break room meeting under it, square (boh
 ##   moved that wall over, but only the floors' far corners with it: a wedge of the break room's floor in the restroom).
 ##
@@ -175,6 +177,12 @@ func _init() -> void:
 					quit(1)
 					return
 			_touchups()
+		"escutcheons":
+			if not "touchups" in done:
+				push_error("remodel: escutcheons goes after touchups")
+				quit(1)
+				return
+			_escutcheons()
 		"railings":
 			if not "theater" in done:
 				push_error("remodel: railings go after theater")
@@ -207,7 +215,7 @@ func _init() -> void:
 	var err := packed.pack(w)
 	if err == OK:
 		err = ResourceSaver.save(packed, WORLD, ResourceSaver.FLAG_COMPRESS)  # (as it came: compressed)
-	if not section in ["strip", "restroom", "railings", "hall", "roof", "closet", "stairwell", "breakroom", "aisles", "lavatory", "booth", "outside", "foyer", "auditorium", "lounge", "front", "touchups"]:  # (the level only: the data's as it was)
+	if not section in ["strip", "restroom", "railings", "hall", "roof", "closet", "stairwell", "breakroom", "aisles", "lavatory", "booth", "outside", "foyer", "auditorium", "lounge", "front", "touchups", "escutcheons"]:  # (the level only: the data's as it was)
 		var f := FileAccess.open(DATA, FileAccess.WRITE)
 		f.store_string(_json(data))
 		f.close()
@@ -1035,6 +1043,29 @@ func _touchups() -> void:
 	for m: MeshInstance3D in run:
 		m.global_position.x -= 0.47
 	print("remodel: the counter's run, %d pieces, along to the fridge" % run.size())
+
+
+func _escutcheons() -> void:  # (the tiles' face is 3.60, not the 3.65 the data has: the heads were up inside the ceiling, only their tips through)
+	var drop := 3.65 - 3.6
+	for n: Node in _named("store", ["sprinkler"]):
+		(n as Node3D).global_position.y -= drop
+	var chrome := Color("d4d8dc")
+	var n := 0
+	for e: Node in _named("store", ["sprinkler escutcheon"]):
+		var at := Vector3((e as Node3D).global_position.x, 3.6, (e as Node3D).global_position.z)
+		e.free()
+		var rim := TorusMesh.new()
+		rim.inner_radius = 0.032
+		rim.outer_radius = 0.054
+		rim.rings = 24
+		rim.ring_segments = 8
+		var r := _add("store", "sprinkler escutcheon rim", rim)
+		r.global_transform = Transform3D(Basis.from_scale(Vector3(1.0, 0.55, 1.0)), at - Vector3(0, 0.003, 0))
+		r.mesh.surface_set_material(0, _mat(chrome))
+		cylinder("store", "sprinkler escutcheon cup", at - Vector3(0, 0.002, 0), 0.034, 0.003, Vector3.UP, Color("8f969d"))
+		cylinder("store", "sprinkler escutcheon collar", at - Vector3(0, 0.01, 0), 0.016, 0.014, Vector3.UP, chrome)
+		n += 1
+	print("remodel: %d sprinkler heads down to the tile, escutcheons on" % n)
 
 
 const HALL := { "x": [2.0, 9.4], "z": [28.1, 29.7], "base": Color("2e2f31"), "door": Color("d4d6d8"), "trim": Color("bfc3c7"), "steel": Color("b8bcc0"), "cork": Color("b0875a"), "red": Color("c8102e") }
