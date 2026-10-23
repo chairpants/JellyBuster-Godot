@@ -310,10 +310,14 @@ func _lump(x: float, z: float, rx: float, rz: float, h: float, y := -0.01, ry :=
 		 rx, rz, h, randf() * 0.55, ry + (randf() - 0.5) * 0.3])
 
 
-func _lump_run(xa: float, xb: float, z: float, side: float, rz: float, h: float) -> void:
+func _lump_run(xa: float, xb: float, z: float, side: float, rz: float, h: float, wall := INF) -> void:  # wall: a z none of it may reach past (the storefront's face: past it, the snow's inside)
 	var x := xa
 	while x < xb:
-		_lump(x, z + side * rz * 0.5 * randf(), 0.35 + randf() * 0.45, rz * (0.6 + randf() * 0.6), h * (0.4 + randf() * 0.6))
+		var depth := rz * (0.6 + randf() * 0.6)
+		var at := z + side * rz * 0.5 * randf()
+		if is_finite(wall):
+			at = minf(at, wall - depth)
+		_lump(x, at, 0.35 + randf() * 0.45, depth, h * (0.4 + randf() * 0.6))
 		x += 0.35 + randf() * 0.5
 
 
@@ -321,8 +325,8 @@ func _drifts_build() -> void:
 	_lump_run(-27.74, 31.0, -12.3 + 0.09, 1.0, 0.22, 0.1)  # the lot side of the curb
 	_lump_run(-27.74, 31.0, -12.3 - 0.09, -1.0, 0.18, 0.07)  # the road side, in the gutter
 	_lump_run(-27.74, 31.0, -20.4 + 0.05, 1.0, 0.3, 0.06)  # the road's far edge, against the grass
-	_lump_run(-7.74, -2.1, -0.06, -1.0, 0.2, 0.09)  # the foot of the storefront, not across the doors
-	_lump_run(2.1, 11.0, -0.06, -1.0, 0.2, 0.09)
+	_lump_run(-7.74, -2.1, -0.06, -1.0, 0.2, 0.09, -0.1)  # the foot of the storefront, not across the doors (and none of it through the wall)
+	_lump_run(2.1, 11.0, -0.06, -1.0, 0.2, 0.09, -0.1)
 	for lx: float in [-14.74, -1.74, 11.26, 21.96]:  # round the lamp footings
 		for a in 7:
 			var t := a / 7.0 * TAU + randf() * 0.4

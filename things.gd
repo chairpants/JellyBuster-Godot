@@ -284,7 +284,7 @@ func take_aim(from: Vector3, dir: Vector3, hit: Dictionary, hit_d: float) -> Str
 		if (at.distance_to(_v(T.cooler.hit)) < 0.75 or (_cooler and cooler_open and at.distance_to(_cooler.global_position + Vector3(0, 1.0, 0)) < 0.9)):
 			aim = "cooler"
 			return "E — %s the cooler" % ("close" if cooler_open else "open")
-		var b := _v(T.bed.at)
+		var b := _v(T.bed.at) if T.has("bed") else Vector3.INF  # (the level's cardboard bed: gone, tools/remodel.gd's punchlist)
 		if absf(at.x - b.x) < 0.6 and absf(at.z - b.z) < 1.2 and at.y < 0.6:
 			aim = "bed"
 			return "E — lie down a while (3 hours)\nsomebody's cardboard bed"

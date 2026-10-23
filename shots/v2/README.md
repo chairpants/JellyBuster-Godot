@@ -202,3 +202,31 @@ The hours ran off their pane, over the mullion: each sign now smaller and centre
 |---|---|
 | ![](lettering/pane_before.png) | ![](lettering/pane_after.png) |
 | ![](lettering/street_before.png) | ![](lettering/street_after.png) |
+
+## Punch list (`punchlist`, `dropbox`)
+
+- The old OPEN 10A-12A DAILY sign standing inside the window: gone.
+- The window pointed at a drop box there wasn't: a curbside return box by the doors now (blue steel, a slot and its
+  flap, VIDEO RETURNS lettered within its face), the window saying AFTER HOURS? USE THE DROP BOX.
+- Snow drifting at the foot of the storefront no longer reaches through the wall into the store.
+- The stairwell's blockwork one pattern over every wall (each piece had been laid from its own corner: on the booth's
+  side two met half a course out).
+- The theater's emergency exit off the back of the building (behind the screen) and onto its right-hand wall, over the
+  level floor at the back: a panel shortened for it, a landing, a panic bar and a lit EXIT inside; outside a flat door
+  with nothing to open it by, EMERGENCY EXIT ONLY, a stoop and a wall pack.
+- The cardboard bed out back: gone.
+- The janitor's closet: the trash chute's hopper onto the wall nearest the dumpster (the safety sheets over it, the
+  sweeper along to make room), its outlet through the wall outside, and the dumpster up against the wall under it with
+  its pad and bollards (the electric meters along out of its way).
+
+| Before | After |
+|---|---|
+| ![](punchlist/dropbox_before.png) | ![](punchlist/dropclose_after.png) |
+| ![](punchlist/snow_before.png) | ![](punchlist/snow_after.png) |
+| ![](punchlist/blocks_before.png) | ![](punchlist/blocks_after.png) |
+| ![](punchlist/exitback_before.png) | ![](punchlist/exitback_after.png) |
+| ![](punchlist/exitin_before.png) | ![](punchlist/exitin_after.png) |
+| ![](punchlist/exitout_before.png) | ![](punchlist/exitout_after.png) |
+| ![](punchlist/chute_before.png) | ![](punchlist/chute_after.png) |
+| ![](punchlist/dumpster_before.png) | ![](punchlist/dumpster_after.png) |
+| ![](punchlist/bed_before.png) | ![](punchlist/bed_after.png) |

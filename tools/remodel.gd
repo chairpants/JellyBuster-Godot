@@ -62,6 +62,16 @@ extends SceneTree
 ## escutcheons: the sprinklers down to the tiles (they were 5 cm up inside the ceiling: the data's height for it, not the
 ##   tiles'), each plate (a flat white disc) a chrome recessed escutcheon: a rolled rim, the cup inside it, a collar
 ## lettering: the window lettering each on a pane of its own, centred between its mullions and small enough to fit it
+## punchlist: the old OPEN 10A-12A DAILY sign inside the window out; a curbside return box by the doors (the window's
+##   lettering pointed at a drop box there wasn't), the lettering saying so; the stairwell's blockwork one pattern over
+##   every wall (each wall's picture was laid from its own corner: on the booth's side, two pieces met half a course out);
+##   the theater's emergency exit (it was on the back of the building, behind the screen) on its right-hand wall, over the
+##   level floor at the back, a panel shortened for it, a landing where the aisle starts down: a panic bar and a lit EXIT
+##   inside, outside a flat door with nothing to open it by; the cardboard bed out back gone; in the janitor's closet the
+##   trash chute's hopper onto the wall nearest the dumpster (the safety sheets over it, the carpet sweeper along to make
+##   room), its outlet through the wall, and the dumpster up against the wall under it (its pad and bollards with it, the
+##   electric meters along out of its way)
+## dropbox: the return box's lettering sized to the box (it ran past both its sides)
 ## restroom: the floors either side of the wall between the restroom and the break room meeting under it, square (boh
 ##   moved that wall over, but only the floors' far corners with it: a wedge of the break room's floor in the restroom).
 ##
@@ -190,6 +200,20 @@ func _init() -> void:
 				quit(1)
 				return
 			_lettering_fit()
+		"punchlist":
+			for need in ["front", "lettering", "stairwell", "outside", "closet"]:
+				if not need in done:
+					push_error("remodel: punchlist goes after %s" % need)
+					quit(1)
+					return
+			_punchlist()
+		"dropbox":
+			if not "punchlist" in done:
+				push_error("remodel: dropbox goes after punchlist")
+				quit(1)
+				return
+			for l: Label3D in _node("out").find_children("return box lettering*", "Label3D", false, false):
+				l.pixel_size = 0.0013
 		"railings":
 			if not "theater" in done:
 				push_error("remodel: railings go after theater")
@@ -222,7 +246,7 @@ func _init() -> void:
 	var err := packed.pack(w)
 	if err == OK:
 		err = ResourceSaver.save(packed, WORLD, ResourceSaver.FLAG_COMPRESS)  # (as it came: compressed)
-	if not section in ["strip", "restroom", "railings", "hall", "roof", "closet", "stairwell", "breakroom", "aisles", "lavatory", "booth", "outside", "foyer", "auditorium", "lounge", "front", "touchups", "escutcheons", "lettering"]:  # (the level only: the data's as it was)
+	if not section in ["strip", "restroom", "railings", "hall", "roof", "closet", "stairwell", "breakroom", "aisles", "lavatory", "booth", "outside", "foyer", "auditorium", "lounge", "front", "touchups", "escutcheons", "lettering", "punchlist", "dropbox"]:  # (the level only: the data's as it was)
 		var f := FileAccess.open(DATA, FileAccess.WRITE)
 		f.store_string(_json(data))
 		f.close()
@@ -1082,6 +1106,148 @@ func _lettering_fit() -> void:  # (the panes: -4.79 to -1.92 left of the doors, 
 			if l.text.begins_with(k):
 				l.global_position = Vector3(fit[k][0], fit[k][1], l.global_position.z)
 				l.pixel_size = fit[k][2]
+
+
+func _ground_y(x: float, z: float, under := 1.0) -> float:  # the highest face below that height at x, z (no collision here: the meshes' own triangles)
+	var top := -INF
+	for m: MeshInstance3D in w.find_children("*", "MeshInstance3D", true, false):
+		if m.mesh == null:
+			continue
+		var b := m.global_transform * m.get_aabb()
+		if x < b.position.x or x > b.end.x or z < b.position.z or z > b.end.z or b.position.y > under:
+			continue
+		var faces := m.mesh.get_faces()
+		for i in range(0, faces.size(), 3):
+			var hit = Geometry3D.ray_intersects_triangle(Vector3(x, under, z), Vector3.DOWN, m.global_transform * faces[i], m.global_transform * faces[i + 1], m.global_transform * faces[i + 2])
+			if hit != null:
+				top = maxf(top, hit.y)
+	return top if top > -INF else 0.0
+
+
+func _move_named(parent: String, prefixes: Array, by: Vector3) -> void:
+	for n: Node in _named(parent, prefixes):
+		(n as Node3D).global_position += by
+
+
+func _punchlist() -> void:
+	# the old hours sign, standing inside the glass
+	_node("store/plane 0_90 x 0_22 x 0_00").free()
+	# a curbside return box by the doors: blue steel on legs, a sloped top, the slot and its flap, lettered
+	var rb := Vector3(3.0, _ground_y(3.0, -0.55), -0.55)
+	var blue := Color("1c4dbb")
+	for c: Vector2 in [Vector2(-0.24, -0.18), Vector2(0.24, -0.18), Vector2(-0.24, 0.18), Vector2(0.24, 0.18)]:
+		block("out", "return box leg", rb + Vector3(c.x - 0.025, 0, c.y - 0.025), rb + Vector3(c.x + 0.025, 0.25, c.y + 0.025), C.iron)
+	block("out", "return box", rb + Vector3(-0.3, 0.25, -0.24), rb + Vector3(0.3, 1.0, 0.24), blue)
+	var lid := BoxMesh.new()
+	lid.size = Vector3(0.62, 0.04, 0.55)
+	var lm := _add("out", "return box top", lid)
+	lm.global_transform = Transform3D(Basis(Vector3.RIGHT, 0.32), rb + Vector3(0, 1.06, 0))
+	lm.mesh.surface_set_material(0, _mat(blue))
+	block("out", "return box slot", rb + Vector3(-0.2, 0.88, -0.245), rb + Vector3(0.2, 0.93, -0.24), Color("15171a"))
+	block("out", "return box flap", rb + Vector3(-0.21, 0.92, -0.255), rb + Vector3(0.21, 0.97, -0.245), Color("b8bcc2"))
+	var lab := Label3D.new()
+	lab.name = "return box lettering"
+	lab.text = "VIDEO RETURNS\nafter hours"
+	lab.font_size = 48
+	lab.outline_size = 0
+	lab.pixel_size = 0.0013  # (within the box's face: 0.6 across)
+	lab.modulate = Color(0.96, 0.96, 0.94)
+	lab.shaded = true
+	lab.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_node("out").add_child(lab, true)
+	lab.owner = w
+	lab.global_transform = Transform3D(Basis(Vector3.UP, PI), rb + Vector3(0, 0.6, -0.242))
+	for l: Label3D in _node("store").find_children("window lettering*", "Label3D", false, false):
+		if l.text.begins_with("RETURNS?"):
+			l.text = "AFTER HOURS?\nUSE THE DROP BOX"
+	# the stairwell's blockwork: each piece's picture laid from the same lines (the world's), not from its own corner
+	for m: MeshInstance3D in _node("lobby").get_children().filter(func(c: Node) -> bool: return String(c.name).begins_with("stairwell blockwork")):
+		var q: QuadMesh = m.mesh
+		var mat: StandardMaterial3D = q.material
+		var left := m.global_transform * Vector3(-q.size.x / 2.0, q.size.y / 2.0, 0)  # (the picture's top left)
+		var u := m.global_basis.x.normalized()
+		mat.uv1_offset = Vector3(fposmod(left.dot(u) / 0.8, 1.0), fposmod(-left.y / 0.4, 1.0), 0)
+	# the theater's emergency exit: off the building's back (behind the screen) and onto its right-hand wall
+	for n: Node in _named("out", ["exit "]):
+		n.free()
+	var ez := [36.25, 37.15]  # (the entrance door, open, lies along this wall to 36.1; the floor's level to 36.7)
+	var xi := -7.64  # the wall's face, inside; outside
+	var xo := -7.99
+	var panel := _node("theater/box 0_05 x 2_20 x 1_50")
+	var pb := _bounds(panel)
+	for m: MeshInstance3D in _node("theater").get_children().filter(func(c: Node) -> bool: return c is MeshInstance3D and c != panel):
+		var b := m.global_transform * m.get_aabb()
+		if b.get_center().x < -7.2 and b.position.z >= pb.position.z - 0.01 and b.end.z <= pb.end.z + 0.01 and b.position.y > 0.5:
+			m.global_position.z += (37.35 + pb.end.z) / 2.0 - b.get_center().z  # (its sconce, to the middle of what's left of it)
+	fit(panel, Vector3(INF, INF, 37.35), Vector3(INF, INF, pb.end.z))
+	block("theater", "exit landing", Vector3(xi, -0.14, 36.6), Vector3(-6.8, 0.0, 37.3), Color("2a1416"))
+	var dark := Color("3a3d42")
+	block("theater", "exit door", Vector3(xi, 0.0, ez[0] + 0.05), Vector3(xi + 0.04, 2.1, ez[1] - 0.05), dark)
+	for e: Array in [[ez[0], ez[0] + 0.05, 0.0, 2.15], [ez[1] - 0.05, ez[1], 0.0, 2.15], [ez[0], ez[1], 2.1, 2.15]]:
+		block("theater", "exit frame", Vector3(xi, e[2], e[0]), Vector3(xi + 0.06, e[3], e[1]), Color("2b2d30"))
+	bar("theater", "panic bar", Vector3(xi + 0.11, 1.0, ez[0] + 0.12), Vector3(xi + 0.11, 1.0, ez[1] - 0.12), Vector2(0.04, 0.05), Color("b8bcc2"))
+	for z: float in [ez[0] + 0.1, ez[1] - 0.1]:
+		block("theater", "panic bar end", Vector3(xi + 0.04, 0.96, z - 0.04), Vector3(xi + 0.13, 1.04, z + 0.04), Color("8f9398"))
+	block("theater", "exit sign", Vector3(xi, 2.3, 36.52), Vector3(xi + 0.06, 2.48, 36.88), Color("f2f2ee"))
+	var face := QuadMesh.new()
+	face.size = Vector2(0.34, 0.16)
+	var tex := ImageTexture.create_from_image(_lettering("EXIT", Color("d0101a"), Color("f6f6f2")))
+	var lit := StandardMaterial3D.new()
+	lit.albedo_texture = tex
+	lit.emission_enabled = true
+	lit.emission_texture = tex
+	lit.emission = Color(1.0, 0.25, 0.2)
+	lit.emission_energy_multiplier = 0.6
+	face.material = lit
+	_add("theater", "exit sign face", face).global_transform = Transform3D(Basis(Vector3.UP, PI / 2.0), Vector3(xi + 0.0605, 2.39, 36.7))
+	var gy := _ground_y(xo - 0.6, 36.7, 0.6)  # outside: a stoop, the door flat in its frame (nothing to open it by), a wall pack, a notice
+	block("out", "emergency exit stoop", Vector3(xo - 0.9, gy, ez[0] - 0.25), Vector3(xo, gy + 0.15, ez[1] + 0.25), Color("9a9a96"))
+	block("out", "emergency exit frame", Vector3(xo - 0.04, gy + 0.15, ez[0]), Vector3(xo, 2.3, ez[1]), Color("4a4f57"))
+	block("out", "emergency exit door", Vector3(xo - 0.06, gy + 0.15, ez[0] + 0.05), Vector3(xo - 0.04, 2.25, ez[1] - 0.05), Color("6b7078"))
+	for y: float in [0.5, 1.2, 1.9]:
+		block("out", "emergency exit hinge", Vector3(xo - 0.065, y, ez[0] + 0.02), Vector3(xo - 0.04, y + 0.1, ez[0] + 0.05), Color("9da3a8"))
+	block("out", "emergency exit wall pack", Vector3(xo - 0.2, 2.6, 36.54), Vector3(xo, 2.82, 36.86), Color("5a4b3a"))
+	block("out", "emergency exit wall pack lens", Vector3(xo - 0.19, 2.59, 36.56), Vector3(xo - 0.02, 2.6, 36.84), Color("f1e3b5"))
+	var note := Label3D.new()
+	note.name = "emergency exit notice"
+	note.text = "EMERGENCY EXIT ONLY\nNO ENTRY"
+	note.font_size = 40
+	note.outline_size = 0
+	note.pixel_size = 0.0016
+	note.modulate = Color(0.95, 0.95, 0.92)
+	note.shaded = true
+	note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_node("out").add_child(note, true)
+	note.owner = w
+	note.global_transform = Transform3D(Basis(Vector3.UP, -PI / 2.0), Vector3(xo - 0.061, 1.55, 36.7))
+	# the cardboard bed out back
+	_node("between_rooms/group of 74").free()
+	data.things.erase("bed")
+	# the closet: the chute's hopper off the north wall (onto the store) and onto the east one, nearest the dumpster
+	var hop: Node3D = _node("out/group of 9")
+	var c0 := _bounds(hop).get_center()
+	var c1 := Vector3(10.9 - 0.075, c0.y, 28.72)
+	hop.global_transform = Transform3D(Basis.IDENTITY, c1) * Transform3D(Basis(Vector3.UP, -PI / 2.0), Vector3.ZERO) * Transform3D(Basis.IDENTITY, -c0) * hop.global_transform
+	data.things.chute = { "at": [10.75, 1.05, 28.72], "stand": { "x": 10.3, "z": 28.72, "ry": PI / 2.0 } }
+	_move_named("out", ["msds"], Vector3(0, 0.57, 0))  # (the safety sheets up over it)
+	_node("out/group of 12").global_position += Vector3(-0.35, 0, 0.6)  # (the carpet sweeper along, by the mop)
+	data.things.tools.sweeper.home = [10.33, 0.65, 29.45]
+	var gal := Color("9da3a8")  # outside, the chute's outlet: a hood through the wall, its flap
+	block("out", "chute outlet", Vector3(11.25, 1.32, 28.42), Vector3(11.62, 1.58, 29.02), gal)
+	var flap := BoxMesh.new()
+	flap.size = Vector3(0.02, 0.3, 0.6)
+	var fm := _add("out", "chute flap", flap)
+	fm.global_transform = Transform3D(Basis(Vector3.BACK, 0.35), Vector3(11.66, 1.42, 28.72))
+	fm.mesh.surface_set_material(0, _mat(gal))
+	# the dumpster up against the wall under it; its pad and bollards with it; the meters along out of its way
+	var dump: Node3D = _node("out/group of 63")
+	var db := _bounds(dump)
+	dump.global_position += Vector3(11.3 - db.position.x, 0, 28.72 - db.get_center().z)
+	fit(_node("out/dumpster pad"), Vector3(11.25, INF, 27.55), Vector3(12.75, INF, 29.85))
+	for n: Node in _named("out", ["bollard"]):
+		var b := n as Node3D
+		b.global_position = Vector3(12.95, b.global_position.y, 27.7 if b.global_position.z < 31.5 else 29.7)
+	_move_named("out", ["meter socket", "meter glass", "meter face", "main disconnect", "disconnect handle", "service conduit", "conduit strap"], Vector3(0, 0, -2.4))
 
 
 const HALL := { "x": [2.0, 9.4], "z": [28.1, 29.7], "base": Color("2e2f31"), "door": Color("d4d6d8"), "trim": Color("bfc3c7"), "steel": Color("b8bcc0"), "cork": Color("b0875a"), "red": Color("c8102e") }
