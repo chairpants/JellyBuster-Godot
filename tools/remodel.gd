@@ -55,6 +55,10 @@ extends SceneTree
 ##   tapes stacked on the coffee table and the remote by them
 ## front: the way in: a ribbed entry mat inside the doors, its border the store's blue and yellow; on the glass either
 ##   side of them, vinyl lettering to the street (NEW RELEASES EVERY TUESDAY, the hours, the drop box round the side)
+## touchups: after a look round. The entry mat's ribs (thin boxes, shimmering and uneven from a distance) a texture with
+##   its smaller copies; the sprinklers fewer (a 6 m grid) and made as pendent heads (a yoke, the red bulb, the deflector);
+##   the lounge's fig a ficus (braided trunks, branches, a crown of small leaves) not a heap of balls; in the break room,
+##   the counter's run slid along to stop at the fridge (it ran into it) and the level's own microwave, inside the fridge, out
 ## restroom: the floors either side of the wall between the restroom and the break room meeting under it, square (boh
 ##   moved that wall over, but only the floors' far corners with it: a wedge of the break room's floor in the restroom).
 ##
@@ -164,6 +168,13 @@ func _init() -> void:
 			_lounge()
 		"front":
 			_front()
+		"touchups":
+			for need in ["front", "aisles", "lounge", "breakroom"]:
+				if not need in done:
+					push_error("remodel: touchups goes after %s" % need)
+					quit(1)
+					return
+			_touchups()
 		"railings":
 			if not "theater" in done:
 				push_error("remodel: railings go after theater")
@@ -196,7 +207,7 @@ func _init() -> void:
 	var err := packed.pack(w)
 	if err == OK:
 		err = ResourceSaver.save(packed, WORLD, ResourceSaver.FLAG_COMPRESS)  # (as it came: compressed)
-	if not section in ["strip", "restroom", "railings", "hall", "roof", "closet", "stairwell", "breakroom", "aisles", "lavatory", "booth", "outside", "foyer", "auditorium", "lounge", "front"]:  # (the level only: the data's as it was)
+	if not section in ["strip", "restroom", "railings", "hall", "roof", "closet", "stairwell", "breakroom", "aisles", "lavatory", "booth", "outside", "foyer", "auditorium", "lounge", "front", "touchups"]:  # (the level only: the data's as it was)
 		var f := FileAccess.open(DATA, FileAccess.WRITE)
 		f.store_string(_json(data))
 		f.close()
@@ -917,6 +928,113 @@ func _front() -> void:
 		_node("store").add_child(lab, true)
 		lab.owner = w
 		lab.global_transform = Transform3D(Basis(Vector3.UP, PI), v[1])
+
+
+func _named(parent: String, prefixes: Array) -> Array:  # its children whose names start with any of those (what a section made: _add numbers its repeats)
+	return _node(parent).get_children().filter(func(c: Node) -> bool: return prefixes.any(func(p: String) -> bool: return String(c.name).begins_with(p)))
+
+
+func _touchups() -> void:
+	# the entry mat: its ribs a texture (stripes, mipmapped) on one quad, not 50 thin boxes
+	for n: Node in _named("store", ["entry mat rib", "entry mat field"]):
+		n.free()
+	var stripes := Image.create(64, 64, false, Image.FORMAT_RGB8)
+	for x in 64:
+		var c := Color("3a3d42") if x % 16 < 7 else Color("23252a")
+		for y in 64:
+			stripes.set_pixel(x, y, c)
+	stripes.generate_mipmaps()
+	var field := QuadMesh.new()
+	field.size = Vector2(2.92, 1.32)
+	var fm := StandardMaterial3D.new()
+	fm.albedo_texture = ImageTexture.create_from_image(stripes)
+	fm.uv1_scale = Vector3(2.92 / 0.16, 1.32 / 0.16, 1.0)  # (a rib every 4 cm)
+	field.material = fm
+	_add("store", "entry mat field", field).global_transform = Transform3D(Basis(Vector3.RIGHT, -PI / 2.0), Vector3(0.0, 0.0165, 1.1))  # (over the yellow line, not level with it)
+	# the sprinklers: fewer, and pendent heads
+	for n: Node in _named("store", ["sprinkler"]):
+		n.free()
+	var f: Array = data.lights.boxes.floor
+	var panels := []
+	for m: MeshInstance3D in w.get_node("store").find_children("*", "MeshInstance3D", true, false):
+		if m.mesh == null or m.mesh.get_surface_count() != 1:
+			continue
+		var mat := m.mesh.surface_get_material(0)
+		var b := m.global_transform * m.get_aabb()
+		if mat is StandardMaterial3D and mat.shading_mode == BaseMaterial3D.SHADING_MODE_UNSHADED and b.size.y < 0.06 and b.position.y > 2.3:
+			var faces := m.mesh.get_faces()
+			for i in range(0, faces.size(), 3):
+				panels.append([0, 1, 2].map(func(k: int) -> Vector2: var v := m.global_transform * faces[i + k]; return Vector2(v.x, v.z)))
+	var brass := Color("b8913e")
+	var heads := 0
+	var x: float = f[0] + 2.4
+	while x < f[1] - 1.0:
+		var z := 2.4
+		while z < f[2] - 1.0:
+			var spot := Vector2(x, z)
+			if not [Vector2.ZERO, Vector2(0.4, 0), Vector2(-0.4, 0), Vector2(0, 0.4), Vector2(0, -0.4)].any(func(d: Vector2) -> bool: return panels.any(func(t: Array) -> bool: return Geometry2D.point_is_inside_triangle(spot + d, t[0], t[1], t[2]))):
+				var y: float = f[3]
+				cylinder("store", "sprinkler escutcheon", Vector3(x, y - 0.004, z), 0.038, 0.008, Vector3.UP, Color("e6e8ea"))
+				cylinder("store", "sprinkler thread", Vector3(x, y - 0.018, z), 0.011, 0.022, Vector3.UP, brass)
+				for side in [-1, 1]:
+					bar("store", "sprinkler frame", Vector3(x + side * 0.012, y - 0.028, z), Vector3(x + side * 0.004, y - 0.07, z), Vector2(0.005, 0.006), brass)
+				cylinder("store", "sprinkler bulb", Vector3(x, y - 0.048, z), 0.0035, 0.028, Vector3.UP, Color("d7262e"))
+				cylinder("store", "sprinkler boss", Vector3(x, y - 0.071, z), 0.006, 0.006, Vector3.UP, brass)
+				cylinder("store", "sprinkler deflector", Vector3(x, y - 0.075, z), 0.021, 0.002, Vector3.UP, brass)
+				heads += 1
+			z += 6.0
+		x += 6.0
+	print("remodel: %d sprinkler heads" % heads)
+	# the fig: braided trunks, branches, a crown of small leaves (one mesh each colour)
+	for n: Node in _named("store", ["plant leaves", "plant trunk"]):
+		n.free()
+	var base := Vector3(-2.8, 0.41, 27.4)
+	var bark := Color("6b5640")
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 8
+	var tips := []
+	for k in 3:  # the trunks, twisting round each other
+		var prev := base + Vector3(cos(k * TAU / 3.0), 0, sin(k * TAU / 3.0)) * 0.02
+		for s in 6:
+			var t := (s + 1) / 6.0
+			var a := k * TAU / 3.0 + t * 3.0
+			var p := base + Vector3(cos(a) * 0.025 + t * 0.04, t * 0.95, sin(a) * 0.025)
+			bar("store", "plant trunk", prev, p, Vector2(0.022, 0.022) * (1.0 - t * 0.4), bark)
+			prev = p
+		for b in 4:  # each trunk's branches, up and out
+			var from := base + Vector3(0.04, rng.randf_range(0.6, 0.95), 0)
+			var out := Vector3(cos(rng.randf() * TAU), 0, sin(rng.randf() * TAU))
+			var to := from + out * rng.randf_range(0.18, 0.32) + Vector3(0, rng.randf_range(0.15, 0.4), 0)
+			bar("store", "plant trunk", from, to, Vector2(0.01, 0.01), bark)
+			tips.append(to)
+	var greens := [SurfaceTool.new(), SurfaceTool.new()]
+	for st in greens:
+		st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var leaf := SphereMesh.new()
+	leaf.radius = 1.0
+	leaf.height = 2.0
+	leaf.radial_segments = 6
+	leaf.rings = 3
+	for i in 520:  # leaves round the branch tips, drooping, every way
+		var tip: Vector3 = tips[i % tips.size()]
+		var at := tip + Vector3(rng.randf_range(-0.26, 0.26), rng.randf_range(-0.2, 0.16), rng.randf_range(-0.26, 0.26))
+		var turn := Basis(Vector3.UP, rng.randf() * TAU) * Basis(Vector3.RIGHT, rng.randf_range(0.3, 0.9))
+		greens[i % 2].append_from(leaf, 0, Transform3D(turn.scaled(Vector3(0.034, 0.005, 0.06)), at))
+	for g in 2:
+		var mi := MeshInstance3D.new()
+		mi.mesh = greens[g].commit()
+		mi.mesh.surface_set_material(0, _mat([Color("2f5a2a"), Color("3f7234")][g]))
+		mi.name = "plant leaves"
+		_node("store").add_child(mi, true)
+		mi.owner = w
+	# the break room: the level's microwave out (inside the fridge, on the counter's end); the counter's run along to stop at the fridge
+	_node("boh/group of 95").free()
+	var run := _all(R(5.5, 7.5, 34.245, 34.95, -0.1, 2.3), ["boh/"]).filter(func(m: MeshInstance3D) -> bool:
+		var bb := m.global_transform * m.get_aabb()
+		return not (bb.position.x >= 7.0 and bb.position.y >= 1.7))  # (not what's on top of the fridge)
+	for m: MeshInstance3D in run:
+		m.global_position.x -= 0.47
+	print("remodel: the counter's run, %d pieces, along to the fridge" % run.size())
 
 
 const HALL := { "x": [2.0, 9.4], "z": [28.1, 29.7], "base": Color("2e2f31"), "door": Color("d4d6d8"), "trim": Color("bfc3c7"), "steel": Color("b8bcc0"), "cork": Color("b0875a"), "red": Color("c8102e") }

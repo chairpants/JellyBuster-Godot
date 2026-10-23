@@ -167,3 +167,18 @@ the demo, which has no pictures: with a server they carry the library's own cove
 | ![](front/street_before.png) | ![](front/street_after.png) |
 | ![](front/mat_before.png) | ![](front/mat_after.png) |
 | ![](front/entry_before.png) | ![](front/entry_after.png) |
+
+## Touch-ups (`touchups`)
+
+After a look round: the entry mat's ribs (thin boxes that shimmered and wandered from a distance) a striped texture with
+its smaller copies; the sprinklers fewer (a 6 m grid) and pendent heads (a yoke, the red bulb, the deflector) rather than
+stacked discs; the lounge's fig a ficus (braided trunks, branches, a crown of small leaves) rather than a heap of balls.
+In the break room the counter ran into the fridge, and the level's own microwave sat inside the fridge: the counter's run
+slid along to stop at it, and that microwave gone (the cart's is the one).
+
+| Before | After |
+|---|---|
+| ![](touchups/kitchen_before.png) | ![](touchups/kitchen_after.png) |
+| ![](touchups/fig_before.png) | ![](touchups/fig_after.png) |
+| ![](touchups/mat_before.png) | ![](touchups/mat_after.png) |
+| ![](touchups/sprinkler_before.png) | ![](touchups/sprinkler_after.png) |
