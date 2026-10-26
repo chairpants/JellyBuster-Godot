@@ -40,7 +40,7 @@ global uniform sampler2D uPanels : filter_linear_mipmap, repeat_disable;   // th
 global uniform vec4 uPanelBox;  // where that map is: x0, z0, its width, its depth
 const float PANEL_REFLECT = 12.0;  // how bright a panel looks in a sleeve, the tile
 global uniform vec2 uZoneSplit;  // the sales floor's zones: front | aisles z, aisles | lounge z
-global uniform vec3 uBohSplit;  // break room | restroom x, ceiling, closet | hall x
+global uniform vec3 uBohSplit;  // restroom | break room x, ceiling, closet | hall x
 global uniform vec2 uThLight;   // x = lobby switch, y = theater house-lights switch
 global uniform float uThSconce;
 global uniform vec3 uInSky; global uniform vec3 uInGround; global uniform vec3 uInAmb; global uniform vec3 uInDirC; global uniform vec3 uInDir;
@@ -136,7 +136,7 @@ void fragment() {
 		rl += uVid.rgb * uVid.a * (VID_TV / (1.0 + dot(tv, tv) / (VID_TV_R * VID_TV_R)) + VID_FLOOR);   // the TV's glow, a pool round the lounge; and the monitors over the aisles, a little everywhere
 	} else if (P.x > uBohBox.x && P.x < uBohBox.y && P.z >= uFloorBox.z && P.z < uBohBox.w && P.y < uBohSplit.y + 0.05) {
 		bool closet = P.x > uBohSplit.z && P.z < uBohBox.z;   // the janitor's closet, at the hall's end: one bare bulb, warm
-		float lvl = closet ? 0.8 * uBoh.w : P.z < uBohBox.z ? uBoh.x : (P.x < uBohSplit.x ? uBoh.y : uBoh.z);
+		float lvl = closet ? 0.8 * uBoh.w : P.z < uBohBox.z ? uBoh.x : (P.x < uBohSplit.x ? uBoh.z : uBoh.y);   // (the restroom west of the wall between, the break room east)
 		rl = (0.03 + 0.97 * lvl) * fl * (closet ? vec3(1.12, 0.95, 0.74) : vec3(1.0));
 	} else if (P.x > uLobbyBox.x && P.x < uLobbyBox.y && P.z >= uLobbyBox.z && P.z < uLobbyBox.w && (P.y < uBohSplit.y + 0.05 || P.z >= uBoothZ && P.y > uTall.x && P.y < uTall.y + 0.1)) {   // (and the projection booth over its back, and the stairs up to it: on a switch of their own, a cooler light)
 		bool stairs = P.x > uShaft.x && P.z > uShaft.y;

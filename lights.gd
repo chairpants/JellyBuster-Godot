@@ -516,7 +516,7 @@ func zone_at(p: Vector3) -> String:  # which switch lights this spot ("" outdoor
 	if p.x > b[0] and p.x < b[1] and p.z >= f[2] and p.z < b[3]:
 		if p.x > _boxes.bohSplit[2] and p.z < b[2]:  # (the closet, at the hall's end)
 			return "closet"
-		return "hall" if p.z < b[2] else "breakroom" if p.x < _boxes.bohSplit[0] else "restroom"
+		return "hall" if p.z < b[2] else "restroom" if p.x < _boxes.bohSplit[0] else "breakroom"
 	if p.x > lo[0] and p.x < lo[1] and p.z >= lo[2] and p.z < lo[3]:
 		if p.y > _boxes.tall[1]:
 			return ""  # (over its ceiling: outside, on the roof)

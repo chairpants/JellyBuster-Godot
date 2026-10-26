@@ -18,7 +18,7 @@ extends Node
 const RATE := 22050
 const HEAD := 0.5  # what's baked is kept at half, for room: the player makes it up
 var ZONES: Array = [["front", 0.0, 3.45, 3.5], ["aisles", -4.0, 3.45, 13.0], ["aisles", 5.0, 3.45, 16.0], ["lounge", 0.0, 3.45, 22.5], ["hall", 5.7, 2.6, 29.0],
-	["breakroom", 4.9, 2.6, 32.4], ["restroom", 9.4, 2.6, 32.4], ["lobby", -2.5, 3.0, 31.5], ["booth", -3.5, 5.9, 32.3], ["stairwell", 0.6, 5.9, 32.3], ["theater", -3.0, 5.0, 40.0]].map(func(z: Array) -> Array: return [z[0], z[1], z[2], Level.z(z[3])])  # a hum over each light zone (as deep as the store is: level.gd)
+	["restroom", 3.9, 2.6, 32.4], ["breakroom", 8.35, 2.6, 32.4], ["lobby", -2.5, 3.0, 31.5], ["booth", -3.5, 5.9, 32.3], ["stairwell", 0.6, 5.9, 32.3], ["theater", -3.0, 5.0, 40.0]].map(func(z: Array) -> Array: return [z[0], z[1], z[2], Level.z(z[3])])  # a hum over each light zone (as deep as the store is: level.gd)
 
 var muted := false
 

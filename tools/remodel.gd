@@ -72,6 +72,10 @@ extends SceneTree
 ##   room), its outlet through the wall, and the dumpster up against the wall under it (its pad and bollards with it, the
 ##   electric meters along out of its way)
 ## dropbox: the return box's lettering sized to the box (it ran past both its sides)
+## swap: the restroom and the break room change places: the restroom west, the first door off the hall from the store
+##   (the customers' way in), the break room east; the wall between them 2 m west (the restroom 3.6 m across, the break
+##   room 5), each room's things along with it to its new walls, its floor, tiles and base fitted to it, the door signs
+##   swapped, the light switches by their doors
 ## restroom: the floors either side of the wall between the restroom and the break room meeting under it, square (boh
 ##   moved that wall over, but only the floors' far corners with it: a wedge of the break room's floor in the restroom).
 ##
@@ -214,6 +218,13 @@ func _init() -> void:
 				return
 			for l: Label3D in _node("out").find_children("return box lettering*", "Label3D", false, false):
 				l.pixel_size = 0.0013
+		"swap":
+			for need in ["boh", "restroom", "breakroom", "lavatory", "touchups"]:
+				if not need in done:
+					push_error("remodel: swap goes after %s" % need)
+					quit(1)
+					return
+			_swap()
 		"railings":
 			if not "theater" in done:
 				push_error("remodel: railings go after theater")
@@ -246,7 +257,7 @@ func _init() -> void:
 	var err := packed.pack(w)
 	if err == OK:
 		err = ResourceSaver.save(packed, WORLD, ResourceSaver.FLAG_COMPRESS)  # (as it came: compressed)
-	if not section in ["strip", "restroom", "railings", "hall", "roof", "closet", "stairwell", "breakroom", "aisles", "lavatory", "booth", "outside", "foyer", "auditorium", "lounge", "front", "touchups", "escutcheons", "lettering", "punchlist", "dropbox"]:  # (the level only: the data's as it was)
+	if not section in ["strip", "restroom", "railings", "hall", "roof", "closet", "stairwell", "breakroom", "aisles", "lavatory", "booth", "outside", "foyer", "auditorium", "lounge", "front", "touchups", "escutcheons", "lettering", "dropbox"]:  # (the level only: the data's as it was)
 		var f := FileAccess.open(DATA, FileAccess.WRITE)
 		f.store_string(_json(data))
 		f.close()
@@ -1248,6 +1259,56 @@ func _punchlist() -> void:
 		var b := n as Node3D
 		b.global_position = Vector3(12.95, b.global_position.y, 27.7 if b.global_position.z < 31.5 else 29.7)
 	_move_named("out", ["meter socket", "meter glass", "meter face", "main disconnect", "disconnect handle", "service conduit", "conduit strap"], Vector3(0, 0, -2.4))
+
+
+func _swap() -> void:
+	const WALL := 5.8  # the wall between them, from 7.8 (0.2 thick)
+	var room := func(x0: float, x1: float) -> Region: return R(x0, x1, 29.85, 34.95, -0.05, 2.705)
+	# the restroom's things out of the way (far off along x), then the break room's along to its new walls, then the restroom's
+	# back to theirs: what's on the restroom's west wall (the old wall between) to the west wall, the rest to the new wall between
+	move(room.call(7.85, 10.95), Vector3(100, 0, 0), false)
+	move(room.call(5.0, 7.75), Vector3(3.2, 0, 0), false)  # the counter's run and the fridge, to the east wall (10.9)
+	move(room.call(3.0, 5.0), Vector3(3.6, 0, 0), false)  # the table and what's round it
+	move(room.call(2.05, 3.0), Vector3(3.8, 0, 0), false)  # the lockers, the cart, the TV: to the new wall between (5.9)
+	move(room.call(107.85, 108.6), Vector3(-105.8, 0, 0), false)  # the sink, the towels, the basket, the switch: to the west wall (2.1)
+	move(room.call(108.6, 110.95), Vector3(-105.2, 0, 0), false)  # the toilet, its bars, the changing station: to the new wall between (5.7)
+	# the wall between, and what keeps people out of it
+	_node("boh/box 0_20 x 2_70 x 3_20").global_position.x += WALL - 7.8
+	for c: Array in data.nav.colliders:
+		if absf(c[0] - 7.62) < 0.01 and absf(c[1] - 7.98) < 0.01:
+			c[0] += WALL - 7.8
+			c[1] += WALL - 7.8
+	data.lights.boxes.bohSplit[0] = WALL
+	# the floors: each room's own, fitted to it
+	fit(_node("boh/plane 2_70 x 3_20 x 0_00"), Vector3(2.0, INF, INF), Vector3(WALL, INF, INF))  # the restroom's tile
+	fit(_node("boh/plane 6_30 x 3_20 x 0_00"), Vector3(WALL, INF, INF), Vector3(11.0, INF, INF))  # the break room's
+	# the restroom's wall tiles along its back and front walls (the side ones went with the things on them), the break room's base
+	for p in ["boh/plane 2_50 x 1_05 x 0_00", "boh/box 2_50 x 0_06 x 0_01"]:
+		fit(_node(p), Vector3(2.1, INF, INF), Vector3(WALL - 0.1, INF, INF))
+	for p in ["boh/plane 0_66 x 1_05 x 0_002", "boh/box 0_66 x 0_06 x 0_012"]:  # (the front wall's: west of its door now)
+		fit(_node(p), Vector3(2.1, INF, INF), Vector3(4.42, INF, INF))
+	fit(_node("boh/box 6_10 x 0_10 x 0_01"), Vector3(WALL + 0.1, INF, INF), Vector3(10.9, INF, INF))
+	fit(_node("boh/box 2_27 x 0_10 x 0_01"), Vector3(WALL + 0.1, INF, INF), Vector3(7.95, INF, INF))
+	fit(_node("boh/box 2_57 x 0_10 x 0_01"), Vector3(9.15, INF, INF), Vector3(10.9, INF, INF))
+	# the doors' signs: each to the other door
+	var a: MeshInstance3D = _node("boh/group of 66/plane 0_42 x 0_12 x 0_00")
+	var b: MeshInstance3D = _node("boh/group of 69/plane 0_42 x 0_12 x 0_002")
+	var ma := a.mesh.surface_get_material(0)
+	a.mesh.surface_set_material(0, b.mesh.surface_get_material(0))
+	b.mesh.surface_set_material(0, ma)
+	# the restroom's switch: off the far wall it went to, onto the wall between, by its door (clear of it open)
+	var sw: Node3D = _node("boh/group of 3189")
+	var sb := _bounds(sw)
+	sw.global_transform = Transform3D(Basis(Vector3.UP, PI), Vector3.ZERO) * Transform3D(Basis.IDENTITY, -sb.get_center()) * sw.global_transform
+	sw.global_position += Vector3(WALL - 0.1 - 0.01, sb.get_center().y, 31.15)
+	for s: Dictionary in data.lights.switches:
+		if s.zone == "restroom":
+			s.p = [WALL - 0.1 - 0.009, s.p[1], 31.15]
+	# (and what the punch list did to the data, which it didn't write: no bed, the chute where its hopper is, the sweeper's home)
+	data.things.erase("bed")
+	data.things.chute = { "at": [10.75, 1.05, 28.72], "stand": { "x": 10.3, "z": 28.72, "ry": PI / 2.0 } }
+	data.things.tools.sweeper.home = [10.33, 0.65, 29.45]
+	print("remodel: the restroom west (2.1 to %.1f), the break room east (%.1f to 10.9)" % [WALL - 0.1, WALL + 0.1])
 
 
 const HALL := { "x": [2.0, 9.4], "z": [28.1, 29.7], "base": Color("2e2f31"), "door": Color("d4d6d8"), "trim": Color("bfc3c7"), "steel": Color("b8bcc0"), "cork": Color("b0875a"), "red": Color("c8102e") }
