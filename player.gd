@@ -29,6 +29,16 @@ var crouched := false
 var sens_k := 1.0  # mouse sensitivity
 var invert_y := false
 var _step_d := 0.0
+var _eye := EYE  # the view's height over your feet, stood or crouched (the step's lag, _rise, on top)
+var _rise_from := 0.0  # a step just taken: the view's height behind your body's when you took it, let out over the stride
+var _rise_t := 0.0
+var _rise_dur := 1.0
+var _tread := NAN  # the height of the tread under you, last frame: what the view stands on (NAN, off your feet: your body)
+var _air_t := 0.0  # off your feet this long (INF: jumped)
+var _pace := SPEED  # the pace you're walking at (not what's left of it when your body waits on the view)
+var _ahead := Vector3.ZERO  # how far a step up set your body on past your stride, walked off before you go on (the view's where you'd be)
+var _stairs := 0.0  # on stairs (a step up or down this recently): slower, up more than down
+var _stairs_up := true
 var climb = null  # on a ladder: { dir (1 up, -1 down), L (the ladder's climb), t, ... } (see fixtures.gd)
 
 @onready var cam: Camera3D = $Camera
@@ -186,7 +196,8 @@ func sit(s: Dictionary) -> void:  # looking the way the seat faces
 	seat = s
 	$Shape.disabled = true
 	velocity = Vector3.ZERO
-	cam.position.y = EYE
+	_stride_reset()
+	cam.position = Vector3(0, EYE, 0)
 	global_position = Vector3(s.x, s.y + s.hipY + SEAT_EYE - EYE, s.z)
 	rotation.y = s.ry + PI
 	cam.rotation.x = 0.0
@@ -204,7 +215,8 @@ func start_climb(dir: int, L: Dictionary, ladders: Dictionary) -> void:  # up (1
 	$Shape.disabled = true
 	velocity = Vector3.ZERO
 	rotation.y = L.yaw  # facing the rungs, up or down
-	cam.position.y = EYE
+	_stride_reset()
+	cam.position = Vector3(0, EYE, 0)
 	cam.rotation.x = 0.0
 
 
@@ -241,7 +253,9 @@ func _process(dt: float) -> void:
 	cam.fov += (seat_fov - cam.fov) * minf(1.0, dt * 8.0)
 	crouched = seat == null and climb == null and not fly and _key(KEY_C) > 0.0
 	if seat == null and climb == null:
-		cam.position.y += ((CROUCH_EYE if crouched else EYE) - cam.position.y) * minf(1.0, dt * 10.0)
+		_eye += ((CROUCH_EYE if crouched else EYE) - _eye) * minf(1.0, dt * 10.0)
+		var base := global_position.y if is_nan(_tread) else _tread
+		cam.position = Vector3(0, base - global_position.y + _eye + _rise(), 0) - global_basis.inverse() * _ahead  # (off the tread you're over, a step's rise let out over the stride; and back where your pace has you)
 	var cap: CapsuleShape3D = $Shape.shape  # (down with you: under what you can crouch under)
 	cap.height = 1.15 if crouched else 1.7
 	$Shape.position.y = cap.height / 2.0
@@ -259,16 +273,50 @@ func _physics_process(dt: float) -> void:
 		var up := _key(KEY_SPACE) - _key(KEY_CTRL)
 		global_position += (cam.global_basis * dir + Vector3.UP * up) * speed * 2.0 * dt
 		velocity = Vector3.ZERO
+		_stride_reset()
 		return
+	_rise_t += dt
+	_stairs = maxf(0.0, _stairs - dt)
+	if _stairs > 0.0:  # (some of each stride goes into the rise, or holding back on the way down)
+		speed *= STAIRS_UP if _stairs_up else STAIRS_DOWN
 	var v := global_basis * dir * speed
+	_pace = speed
 	velocity.x = v.x
 	velocity.z = v.z
+	var jumped := false
 	if is_on_floor():
-		velocity.y = JUMP if Input.is_physical_key_pressed(KEY_SPACE) else 0.0
+		jumped = Input.is_physical_key_pressed(KEY_SPACE)
+		velocity.y = JUMP if jumped else 0.0
 	else:
 		velocity.y -= 9.8 * dt
 	_step_up(dt)
+	if dir == Vector3.ZERO:
+		_ahead = Vector3.ZERO  # (stood still: the view settles where the body is)
+	elif _ahead != Vector3.ZERO:  # what a step up carried you on, walked off: the body waits while the view catches up
+		var stride := Vector2(velocity.x, velocity.z).length() * dt
+		var pay := minf(_ahead.length(), stride)
+		_ahead = _ahead.move_toward(Vector3.ZERO, pay)
+		var k := (stride - pay) / stride if stride > 0.0 else 0.0
+		velocity.x *= k
+		velocity.z *= k
 	move_and_slide()
+	_air_t = 0.0 if is_on_floor() else _air_t + dt
+	if jumped:
+		_air_t = INF  # (off your feet till you land: the view goes with you)
+	if not is_on_floor() and _air_t < 0.2:  # off the edge of a step, not jumping: down onto the next (its nosing will do), not a fall
+		var drop := KinematicCollision3D.new()
+		if test_move(global_transform, Vector3.DOWN * GLUE, drop) and drop.get_normal().y > 0.3:
+			global_position.y += drop.get_travel().y
+			velocity.y = 0.0
+			_air_t = 0.0
+	# the view goes by the tread under you, not your body (which rolls down a stair's nosings as if a ramp, and is up the
+	# next step before you're over it): a tread higher or lower than last frame's is a step, a stride's rise or fall
+	var under := _tread_under(global_position - _ahead) if _air_t < 0.2 else NAN
+	if not is_nan(under) and absf(under - global_position.y) > REACH:
+		under = NAN  # (further down than that: off an edge, falling. The view goes with your body)
+	if not is_nan(under) and not is_nan(_tread) and absf(under - _tread) > 0.06 and absf(under - _tread) < REACH:  # (more than a mat, a rug; less than being put somewhere else)
+		_stepped(under - _tread)
+	_tread = under
 	if global_position.y < -10.0:  # fell out of the level (a floor moved or deleted): back where the game starts you
 		global_position = Vector3(0, 0.3, -6)
 		velocity = Vector3.ZERO
@@ -280,12 +328,18 @@ func _physics_process(dt: float) -> void:
 
 
 const STEP := 0.32  # as high as you'll step up without jumping: a curb, a stair
+const TREAD := 0.27  # a stair's going (the booth's, the iron stair's): a stride a step, the view's rise let out over it
+const STAIRS_UP := 0.5  # your pace on stairs, of the flat's: up, half of each stride's spent lifting you
+const STAIRS_DOWN := 0.7  # ...down, a step at a time, held back
+const GLUE := 0.5  # off the edge of a step, down to what's this far under you: you step down to it (an open stair's next nosing), not fall
+const REACH := 0.7  # the tread under you this far from your body is still the one you're on: down an open stair, your body's on the nosing above while you're over the next one down
+const ON_STAIRS := 0.45  # a step up or down this recently, you're still on the stairs (they come a stride apart)
 
 
 func _step_up(dt: float) -> void:  # walking into something low: up onto it (the web game's floor is just the height under you; here it takes doing)
 	var motion := Vector3(velocity.x, 0.0, velocity.z) * dt
-	if not is_on_floor() or motion.length() < 0.001:
-		return
+	if not is_on_floor() or motion.length() < 0.001 or _ahead.length() > 0.01:
+		return  # (or still on from the last step up: the next waits on your stride)
 	var from := global_transform
 	var probe := motion.normalized() * maxf(motion.length(), 0.12)  # (a little ahead: far enough to be over the edge)
 	if not test_move(from, probe) or test_move(from, Vector3.UP * STEP):
@@ -296,6 +350,37 @@ func _step_up(dt: float) -> void:  # walking into something low: up onto it (the
 	var landing := KinematicCollision3D.new()
 	if test_move(raised.translated(probe), Vector3.DOWN * STEP, landing) and landing.get_normal().y > 0.7 and landing.get_travel().length() < STEP - 0.01:
 		global_position = raised.origin + probe + landing.get_travel()
+		_ahead += probe  # (on past the edge to stand on it: more than this stride, to come off the next ones)
+
+
+func _tread_under(at: Vector3) -> float:  # the height of what's straight under you, your feet's reach about (NAN: nothing)
+	var q := PhysicsRayQueryParameters3D.create(at + Vector3.UP * 0.5, at + Vector3.DOWN * 1.0)
+	q.exclude = [get_rid()]
+	var hit := get_world_3d().direct_space_state.intersect_ray(q)
+	return hit.position.y if hit else NAN
+
+
+func _stepped(h: float) -> void:  # the tread under you's a step h higher (or lower): the view, left where it was, follows over the stride
+	_rise_from = _rise() - h
+	_rise_t = 0.0
+	_rise_dur = clampf(TREAD / _pace, 0.14, 0.5)
+	_stairs = ON_STAIRS
+	_stairs_up = h > 0.0
+	_step_d = 0.0  # a footfall on each step
+	$"../Ambience".step(global_position, 0.35 if crouched else 0.6)
+
+
+func _rise() -> float:  # the view's height behind (or ahead of) the tread's: eased in and out over the stride, a step at a time
+	var k := clampf(_rise_t / _rise_dur, 0.0, 1.0)
+	return _rise_from * (1.0 - k * k * (3.0 - 2.0 * k))
+
+
+func _stride_reset() -> void:  # (sat down, on a ladder, flying: no step under way)
+	_rise_from = 0.0
+	_ahead = Vector3.ZERO
+	_stairs = 0.0
+	_eye = EYE
+	_tread = NAN
 
 
 func _key(k: Key) -> float:  # (not while typing: the cover search's box, covers.gd; the register, pos.gd)
