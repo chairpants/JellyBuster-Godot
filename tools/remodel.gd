@@ -76,6 +76,28 @@ extends SceneTree
 ##   (the customers' way in), the break room east; the wall between them 2 m west (the restroom 3.6 m across, the break
 ##   room 5), each room's things along with it to its new walls, its floor, tiles and base fitted to it, the door signs
 ##   swapped, the light switches by their doors
+## ficus: the fig's leaves less alike: each where it was, but every one turned anew: pointing out from the trunk give or
+##   take, some hanging nearly straight down, some tipped up, most between, rolled about the midrib, twisted a little in
+##   their own plane (they lay level, all one way round, as if on a table: the touch-ups flattened each ball along the
+##   world's axes after turning it, so none of its turns showed)
+## pot: the fig's pot V2: a turned terracotta pot, not a plain tapered cylinder: a foot, its body flaring up to a rolled rim
+##   band and lip, hollow (its inner wall down to the soil, set in below the rim); mottled, a pale mineral bloom under the
+##   band, darker where the water's soaked at its foot; lumpy soil with a few pebbles; a saucer under it
+## rug: the lounge's rug (the hotel's hexagons) given a thickness: on the floor, 1.6 cm up to its face (it lay 1 cm up and
+##   paper thin), a bound edge round it, rounded over at the top; and what stands on it up half that (0.8 cm), as into
+##   its pile: the couch, the coffee table and what's on it, the TV, the lamps and their pools of light, the speakers, the fig
+## couch: the lounge couch's middle back cushion (the tall, arched one) and the piping along its top wider, out to tuck in
+##   under the side ones' edges: the level had a 2.6 cm slot either side of it, only a black seam strip set back in it
+## drain: the tall roof's west scupper, collector head, downspout and splash block off the foot of the iron stair, to the
+##   block's far end, past the stair's landing (x -7.2): its splash block was the stair's first step, its downspout down
+##   inside its width, and its collector head over the bottom tread, in the way of your head from the first step up (so
+##   no one got past it). Not just along the wall: anywhere this side of the stair, its splash block's in the way to it
+## backroof: what the back ladder's move and the swap got wrong, put right. The back ladder's sliding half is the one
+##   that hangs latched up at y 2 (out/group of 1112), not its fixed top with the hoops (between_rooms/group of 20): boh
+##   marked the top, which fixtures.gd found already down, so kicked loose the ladder never fell and was climbed all the
+##   same. And two of the data's points the swap's moves took for the rooms': the lobby's light box's east side (2.05,
+##   on the edge of what went 3.8 m east: the booth's light, which the box carries up to the tall block's ceiling, on
+##   the store's roof by it) and where the back ladder sets you on the roof (over the break room: 3.2 m off the ladder)
 ## restroom: the floors either side of the wall between the restroom and the break room meeting under it, square (boh
 ##   moved that wall over, but only the floors' far corners with it: a wedge of the break room's floor in the restroom).
 ##
@@ -225,6 +247,38 @@ func _init() -> void:
 					quit(1)
 					return
 			_swap()
+		"ficus":
+			if not "touchups" in done:
+				push_error("remodel: ficus goes after touchups")
+				quit(1)
+				return
+			_ficus()
+		"pot":
+			if not "touchups" in done:
+				push_error("remodel: pot goes after touchups")
+				quit(1)
+				return
+			_pot()
+		"rug":
+			if not "pot" in done:
+				push_error("remodel: rug goes after pot")
+				quit(1)
+				return
+			_rug()
+		"couch":
+			_couch()
+		"drain":
+			if not "roof" in done:
+				push_error("remodel: drain goes after roof")
+				quit(1)
+				return
+			_drain()
+		"backroof":
+			if not "swap" in done:
+				push_error("remodel: backroof goes after swap")
+				quit(1)
+				return
+			_backroof()
 		"railings":
 			if not "theater" in done:
 				push_error("remodel: railings go after theater")
@@ -257,7 +311,7 @@ func _init() -> void:
 	var err := packed.pack(w)
 	if err == OK:
 		err = ResourceSaver.save(packed, WORLD, ResourceSaver.FLAG_COMPRESS)  # (as it came: compressed)
-	if not section in ["strip", "restroom", "railings", "hall", "roof", "closet", "stairwell", "breakroom", "aisles", "lavatory", "booth", "outside", "foyer", "auditorium", "lounge", "front", "touchups", "escutcheons", "lettering", "dropbox"]:  # (the level only: the data's as it was)
+	if not section in ["strip", "restroom", "railings", "hall", "roof", "closet", "stairwell", "breakroom", "aisles", "lavatory", "booth", "outside", "foyer", "auditorium", "lounge", "front", "touchups", "escutcheons", "lettering", "dropbox", "ficus", "pot", "rug", "couch", "drain"]:  # (the level only: the data's as it was)
 		var f := FileAccess.open(DATA, FileAccess.WRITE)
 		f.store_string(_json(data))
 		f.close()
@@ -1309,6 +1363,308 @@ func _swap() -> void:
 	data.things.chute = { "at": [10.75, 1.05, 28.72], "stand": { "x": 10.3, "z": 28.72, "ry": PI / 2.0 } }
 	data.things.tools.sweeper.home = [10.33, 0.65, 29.45]
 	print("remodel: the restroom west (2.1 to %.1f), the break room east (%.1f to 10.9)" % [WALL - 0.1, WALL + 0.1])
+
+
+func _ficus() -> void:
+	# the touch-ups' draws over again (its seed, in its order), so every leaf comes out where it is; a second generator turns some
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 8
+	var base := Vector3(-2.8, 0.41, 27.4)
+	var tips := []
+	for k in 3:
+		for b in 4:
+			var from := base + Vector3(0.04, rng.randf_range(0.6, 0.95), 0)
+			var out := Vector3(cos(rng.randf() * TAU), 0, sin(rng.randf() * TAU))
+			tips.append(from + out * rng.randf_range(0.18, 0.32) + Vector3(0, rng.randf_range(0.15, 0.4), 0))
+	var odd := RandomNumberGenerator.new()
+	odd.seed = 31
+	var greens := [SurfaceTool.new(), SurfaceTool.new()]
+	for st in greens:
+		st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var leaf := SphereMesh.new()
+	leaf.radius = 1.0
+	leaf.height = 2.0
+	leaf.radial_segments = 6
+	leaf.rings = 3
+	var turned := 0
+	for i in 520:
+		var tip: Vector3 = tips[i % tips.size()]
+		var at := tip + Vector3(rng.randf_range(-0.26, 0.26), rng.randf_range(-0.2, 0.16), rng.randf_range(-0.26, 0.26))
+		rng.randf()  # (the touch-ups' turn, drawn and not used: every leaf's angles are new)
+		rng.randf()
+		var away := at - base
+		var heading := atan2(away.x, away.z) + odd.randf_range(-1.1, 1.1)  # pointing out from the trunk, more or less
+		var pick := odd.randf()
+		var droop := odd.randf_range(1.0, 1.45) if pick < 0.3 else odd.randf_range(-0.35, 0.3) if pick < 0.45 else odd.randf_range(0.3, 1.0)  # (some hanging nearly straight down, some tipped up, most between)
+		var roll := odd.randf_range(-1.0, 1.0)  # about its midrib: no longer face up
+		var twist := odd.randf_range(-0.4, 0.4)  # in its own plane
+		var turn := Basis(Vector3.UP, heading) * Basis(Vector3.RIGHT, droop) * Basis(Vector3.BACK, roll) * Basis(Vector3.UP, twist)
+		if droop > 1.0 or droop < 0.3 or absf(roll) > 0.6:
+			turned += 1
+		greens[i % 2].append_from(leaf, 0, Transform3D(turn * Basis.from_scale(Vector3(0.034, 0.005, 0.06)), at))  # (flattened in its own frame, then turned: the touch-ups' scaled() flattened it along the world's after the turn, and a ball turned is the same ball, so every leaf lay level, the same way round)
+	var olds := _named("store", ["plant leaves"])
+	for g in 2:
+		var mi: MeshInstance3D = olds[g]
+		mi.mesh = greens[g].commit()
+		mi.mesh.surface_set_material(0, _mat([Color("2f5a2a"), Color("3f7234")][g]))
+	print("remodel: the fig's 520 leaves turned anew, %d well off the old level (hanging, tipped up or rolled)" % turned)
+
+
+func _pot() -> void:
+	for n: Node in _named("store", ["plant pot", "plant soil"]):
+		n.free()
+	var f := Vector3(-2.8, 0.0, 27.4)  # (the trunks rise from 0.41: the soil's top)
+	var clay := Color("9a5232")
+	var bloom := Color("c4ab92")
+	var wet := Color("6a3823")
+	var lip := Color("a65c3a")
+	# the saucer: a shallow dish on the floor, its rim turned up
+	_add("store", "plant saucer", _lathe([[0.0, 0.002], [0.19, 0.002], [0.212, 0.008], [0.226, 0.03], [0.22, 0.034], [0.208, 0.014], [0.0, 0.014]],
+		[wet, wet, clay, lip, lip, clay, wet])).global_position = f
+	# the pot: its foot, body, the rolled band and lip, and in over the lip and down its inner wall to below the soil
+	var y0 := 0.014
+	var profile := [[0.0, y0], [0.158, y0], [0.168, y0 + 0.008], [0.172, y0 + 0.03], [0.168, y0 + 0.036],  # (the foot)
+		[0.172, 0.06], [0.196, 0.24], [0.214, 0.37], [0.218, 0.385],  # (the body, flaring)
+		[0.232, 0.39], [0.239, 0.4], [0.24, 0.45], [0.236, 0.462], [0.226, 0.468], [0.214, 0.466], [0.207, 0.455],  # (the band and lip)
+		[0.2, 0.42], [0.19, 0.36]]  # (the inner wall, down under the soil)
+	var tint := [wet, wet, wet, wet, wet, wet.lerp(clay, 0.7), clay, bloom.lerp(clay, 0.45), bloom.lerp(clay, 0.3),
+		clay, lip, lip, lip, lip, lip, clay, clay.darkened(0.25), clay.darkened(0.4)]
+	_add("store", "plant pot", _lathe(profile, tint, true)).global_position = f
+	# the soil: a disc just in from the inner wall, lumpy, darker and lighter by turns
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 17
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	const RINGS := 6
+	const SEGS := 28
+	var pts := [[Vector3(0, 0.413, 0), Color("2e2219")]]
+	for r in RINGS:
+		for s in SEGS:
+			var a := (s + (r % 2) * 0.5) * TAU / SEGS
+			var rad := 0.205 * (r + 1) / RINGS
+			var y := 0.41 + (0.004 * (1.0 - float(r + 1) / RINGS)) + rng.randf_range(-0.003, 0.003) * (1.0 if r < RINGS - 1 else 0.3)
+			pts.append([Vector3(cos(a) * rad, y, sin(a) * rad), Color("2b2018").lerp(Color("4a3626"), rng.randf() * 0.6)])
+	var idx := func(r: int, s: int) -> int: return 0 if r < 0 else 1 + r * SEGS + posmod(s, SEGS)
+	var tris := []
+	for s in SEGS:
+		tris.append([0, idx.call(0, s), idx.call(0, s + 1)])
+	for r in RINGS - 1:
+		for s in SEGS:
+			var o := r % 2  # (each ring turned half a step on the last)
+			tris.append([idx.call(r, s), idx.call(r + 1, s - 1 + o), idx.call(r + 1, s + o)])
+			tris.append([idx.call(r, s), idx.call(r + 1, s + o), idx.call(r, s + 1)])
+	for t: Array in tris:
+		var p: Array = [pts[t[0]][0], pts[t[1]][0], pts[t[2]][0]]
+		var order := [0, 1, 2] if (p[1] - p[0]).cross(p[2] - p[0]).y < 0.0 else [0, 2, 1]  # (Godot's front: clockwise from above)
+		for k: int in order:
+			st.set_color((pts[t[k]][1] as Color).srgb_to_linear())
+			st.add_vertex(pts[t[k]][0])
+	st.generate_normals()
+	var soil := st.commit()
+	var dirt := _mat(Color.WHITE).duplicate()
+	dirt.vertex_color_use_as_albedo = true
+	dirt.roughness = 0.95
+	soil.surface_set_material(0, dirt)
+	_add("store", "plant soil", soil).global_position = f
+	# a few pebbles on it, clear of the trunks
+	var stones := SurfaceTool.new()
+	stones.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var pebble := SphereMesh.new()
+	pebble.radius = 1.0
+	pebble.height = 2.0
+	pebble.radial_segments = 8
+	pebble.rings = 4
+	var laid := 0
+	while laid < 16:
+		var at := Vector3(rng.randf_range(-0.19, 0.19), 0.0, rng.randf_range(-0.19, 0.19))
+		if at.length() > 0.19 or at.length() < 0.07:
+			continue
+		var size := rng.randf_range(0.008, 0.016)
+		at.y = 0.411 + size * 0.25
+		stones.append_from(pebble, 0, Transform3D(Basis(Vector3.UP, rng.randf() * TAU) * Basis.from_scale(Vector3(size, size * 0.55, size * rng.randf_range(0.7, 1.0))), at))
+		laid += 1
+	var pebbles := stones.commit()
+	pebbles.surface_set_material(0, _mat(Color("8d8779")))
+	_add("store", "plant soil pebbles", pebbles).global_position = f
+	print("remodel: the fig's pot turned, on a saucer, its soil lumpy with %d pebbles" % laid)
+
+
+func _rug() -> void:
+	const TOP := 0.016  # its face, off the floor
+	const BEVEL := 0.004  # the binding's roll over, at the top
+	var rug: MeshInstance3D = _node("store/plane 7_00 x 7_30 x 0_00")
+	var rb := _bounds(rug)
+	var lo := Vector2(rb.position.x, rb.position.z)
+	var hi := Vector2(rb.end.x, rb.end.z)
+	# what stands on it, up half its thickness: everything of the store's over it below the wall's sign, the rug and the floor aside
+	var lifted := 0
+	for n: Node in _node("store").get_children():
+		if n == rug or not n is Node3D or n.name.begins_with("plane 18_74"):
+			continue
+		var b := _bounds(n)
+		if b.size == Vector3.ZERO or b.position.y > 1.6:
+			continue
+		if b.position.x >= lo.x - 0.01 and b.end.x <= hi.x + 0.01 and b.position.z >= lo.y - 0.01 and b.end.z <= hi.y + 0.01:
+			(n as Node3D).global_position.y += TOP / 2.0
+			lifted += 1
+	# its face up to the top, drawn in by the bevel all round (about its middle: the hexagons the same, near enough)
+	var mid := Vector3((lo.x + hi.x) / 2.0, 0.0, (lo.y + hi.y) / 2.0)
+	var s := Vector3((hi.x - lo.x - 2.0 * BEVEL) / (hi.x - lo.x), 1.0, (hi.y - lo.y - 2.0 * BEVEL) / (hi.y - lo.y))
+	rug.global_transform = Transform3D(Basis.from_scale(s), mid) * Transform3D(Basis.IDENTITY, -mid) * rug.global_transform
+	rug.global_position.y = TOP
+	# the bound edge: straight up from the floor, then rolled over in to the face
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var corners := [Vector2(lo.x, lo.y), Vector2(hi.x, lo.y), Vector2(hi.x, hi.y), Vector2(lo.x, hi.y)]
+	var profile := [[0.0, 0.0], [0.0, TOP - BEVEL], [0.0015, TOP - 0.001], [BEVEL, TOP]]  # (in from the edge, up)
+	for c in 4:
+		var a: Vector2 = corners[c]
+		var b: Vector2 = corners[(c + 1) % 4]
+		var along := (b - a).normalized()
+		var inward := Vector2(-along.y, along.x)  # (the corners go round so this is in)
+		if inward.dot(Vector2(mid.x, mid.z) - (a + b) / 2.0) < 0.0:
+			inward = -inward
+		for k in profile.size() - 1:
+			var p0: Array = profile[k]
+			var p1: Array = profile[k + 1]
+			var q := [Vector3(a.x + inward.x * p0[0], p0[1], a.y + inward.y * p0[0]), Vector3(b.x + inward.x * p0[0], p0[1], b.y + inward.y * p0[0]),
+				Vector3(b.x + inward.x * p1[0], p1[1], b.y + inward.y * p1[0]), Vector3(a.x + inward.x * p1[0], p1[1], a.y + inward.y * p1[0])]
+			var out := Vector3(-inward.x, 0.0, -inward.y) * (1.0 - k / 2.0) + Vector3.UP * (k / 2.0)  # (facing out, then up as it rolls over)
+			for t: Array in [[0, 1, 2], [0, 2, 3]]:
+				var tri: Array = t if (q[t[1]] - q[t[0]]).cross(q[t[2]] - q[t[0]]).dot(out) < 0.0 else [t[0], t[2], t[1]]  # (Godot's front: clockwise from outside)
+				for i: int in tri:
+					st.add_vertex(q[i])
+	st.generate_normals()
+	var edge := st.commit()
+	edge.surface_set_material(0, _mat(Color("3a2216")))
+	var em := _add("store", "rug edge", edge)
+	em.set_meta("walk_through", true)  # (a lip 1.6 cm high, to step over, not to stop at: the face is what's walked on)
+	print("remodel: the rug %.1f cm thick, bound round; %d things on it up %.1f cm" % [TOP * 100.0, lifted, TOP * 50.0])
+
+
+func _drain() -> void:
+	var moved := 0
+	for n: Node in _named("out/roof", ["scupper", "collector head", "downspout", "splash block"]):
+		var b := _bounds(n)
+		if absf(b.get_center().x + 2.6) < 0.3:  # (the west set, at the iron stair's foot: not the east one, at 1.55)
+			(n as Node3D).global_position.x += -7.2 + 2.6
+			moved += 1
+	print("remodel: %d pieces of the tall roof's west drain to its far end, off the iron stair" % moved)
+
+
+func _backroof() -> void:
+	var top: Node3D = _node("between_rooms/group of 20")
+	var slide: Node3D = _node("out/group of 1112")
+	if absf(slide.position.y - data.ladders.back.raise) > 0.01:
+		push_error("remodel: backroof: the back ladder's sliding half isn't up at %.2f (at %.2f)" % [data.ladders.back.raise, slide.position.y])
+	top.remove_meta("back_ladder")
+	slide.set_meta("back_ladder", true)  # (fixtures.gd finds its sliding half by this: up by raise, it falls to 0)
+	data.lights.boxes.lobby[1] = 2.05  # (as the booth's and the theater's: the lobby's east wall)
+	data.ladders.back.climb.up = { "x": data.ladders.back.x, "z": data.ladders.back.z - 1.07 }  # (as boh had it: on the roof behind the ladder)
+	print("remodel: the back ladder's sliding half marked; the lobby's light box to x %.2f; the ladder's top at (%.2f, %.2f)" % [data.lights.boxes.lobby[1], data.ladders.back.climb.up.x, data.ladders.back.climb.up.z])
+
+
+func _couch() -> void:
+	const OUT := 0.36  # the middle back cushion's half width, to be (0.323: the side ones start at 0.349, rounded off)
+	var widened := 0
+	for m: Array in [["store/group of 210/mesh 2_25 x 0_72 x 0_91", 1.0], ["store/group of 210/mesh 2_26 x 0_92 x 0_93", 0.92]]:  # (the cushions; the piping, its top's above 0.92)
+		var mi: MeshInstance3D = _node(m[0])
+		var arr := mi.mesh.surface_get_arrays(0)
+		var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+		# the middle back cushion (or its piping): the one piece across the middle whose top is that high
+		for piece: PackedInt32Array in _pieces(arr):
+			var b := AABB(mi.global_transform * v[piece[0]], Vector3.ZERO)
+			for i in piece:
+				b = b.expand(mi.global_transform * v[i])
+			if absf(b.get_center().x) > 0.01 or b.end.y < m[1] or b.end.z > 23.2:  # (centred, the back's, up past the side ones')
+				continue
+			var k := OUT / (b.size.x / 2.0) if m[1] == 1.0 else OUT / 0.323  # (the piping widened as its cushion is)
+			for i in piece:
+				var g := mi.global_transform * v[i]
+				g.x *= k
+				v[i] = mi.global_transform.affine_inverse() * g
+			widened += 1
+			print("remodel: %s's piece x %.3f..%.3f widened %.3f" % [mi.name, b.position.x, b.end.x, k])
+		arr[Mesh.ARRAY_VERTEX] = v
+		var mat := mi.mesh.surface_get_material(0)
+		var mesh := ArrayMesh.new()
+		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+		mesh.surface_set_material(0, mat)
+		mi.mesh = mesh
+	if widened != 2:
+		push_error("remodel: couch: found %d of the middle back cushion and its piping, not 2" % widened)
+
+
+func _pieces(arr: Array) -> Array:  # a surface's vertices in the pieces its triangles join them into (equal positions welded)
+	var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+	var tri: PackedInt32Array = arr[Mesh.ARRAY_INDEX] if arr[Mesh.ARRAY_INDEX] != null else PackedInt32Array(range(v.size()))
+	var up := PackedInt32Array()
+	up.resize(v.size())
+	var at := {}
+	for i in v.size():
+		var key := v[i].snappedf(0.0001)
+		if not at.has(key):
+			at[key] = i
+		up[i] = at[key]
+	var top := func(x: int) -> int:
+		while up[x] != x:
+			x = up[x]
+		return x
+	for t in range(0, tri.size(), 3):
+		var r0: int = top.call(tri[t])
+		for j in [1, 2]:
+			var rj: int = top.call(tri[t + j])
+			if rj != r0:
+				up[rj] = r0
+	var groups := {}
+	for i in v.size():
+		var r: int = top.call(i)
+		if not groups.has(r):
+			groups[r] = PackedInt32Array()
+		groups[r].append(i)
+	return groups.values()
+
+
+func _lathe(profile: Array, tint: Array, mottle := false) -> ArrayMesh:  # a profile ([radius, y] pairs, in order, the outside on its left as it goes) turned round y, coloured point by point
+	const SEGS := 40
+	var normals := []  # (each point's: the two segments' either side of it, averaged)
+	for i in profile.size():
+		var n := Vector2.ZERO
+		for j: int in [i - 1, i]:
+			if j >= 0 and j + 1 < profile.size():
+				var d := Vector2(profile[j + 1][0] - profile[j][0], profile[j + 1][1] - profile[j][1]).normalized()
+				n += Vector2(d.y, -d.x)
+		normals.append(n.normalized())
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var vert := func(i: int, s: int) -> void:
+		var a := s * TAU / SEGS
+		var r: float = profile[i][0]
+		var y: float = profile[i][1]
+		var c: Color = tint[i]
+		if mottle:  # (clay's never one colour all round)
+			c = c * (1.0 + 0.05 * sin(3.0 * a + y * 21.0) + 0.035 * sin(7.0 * a - y * 37.0) + 0.02 * sin(13.0 * a + y * 60.0))
+			c.a = 1.0
+		st.set_color(c.srgb_to_linear())  # (the room shader takes a mesh's colours as they are: linear)
+		st.set_normal(Vector3(cos(a) * normals[i].x, normals[i].y, sin(a) * normals[i].x))
+		st.add_vertex(Vector3(cos(a) * r, y, sin(a) * r))
+	for i in profile.size() - 1:
+		for s in SEGS:
+			var quad := [[i, s], [i + 1, s], [i + 1, s + 1], [i, s + 1]]
+			var p := quad.map(func(q: Array) -> Vector3: return Vector3(cos(q[1] * TAU / SEGS) * profile[q[0]][0], profile[q[0]][1], sin(q[1] * TAU / SEGS) * profile[q[0]][0]))
+			var out := Vector3(cos((s + 0.5) * TAU / SEGS) * (normals[i].x + normals[i + 1].x), normals[i].y + normals[i + 1].y, sin((s + 0.5) * TAU / SEGS) * (normals[i].x + normals[i + 1].x))
+			for t: Array in [[0, 1, 2], [0, 2, 3]]:
+				var tri: Array = t if (p[t[1]] - p[t[0]]).cross(p[t[2]] - p[t[0]]).dot(out) < 0.0 else [t[0], t[2], t[1]]  # (Godot's front: clockwise from outside)
+				if p[tri[0]].distance_to(p[tri[1]]) < 1e-6 or p[tri[1]].distance_to(p[tri[2]]) < 1e-6 or p[tri[0]].distance_to(p[tri[2]]) < 1e-6:
+					continue  # (none at the axis, where a ring's all one point)
+				for k: int in tri:
+					vert.call(quad[k][0], quad[k][1])
+	var mesh := st.commit()
+	var m := _mat(Color.WHITE).duplicate()
+	m.vertex_color_use_as_albedo = true
+	m.roughness = 0.9
+	mesh.surface_set_material(0, m)
+	return mesh
 
 
 const HALL := { "x": [2.0, 9.4], "z": [28.1, 29.7], "base": Color("2e2f31"), "door": Color("d4d6d8"), "trim": Color("bfc3c7"), "steel": Color("b8bcc0"), "cork": Color("b0875a"), "red": Color("c8102e") }
